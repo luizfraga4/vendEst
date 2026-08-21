@@ -1,0 +1,785 @@
+<!DOCTYPE html>
+<html lang="pt-BR" class="h-full bg-slate-900 text-slate-100">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VendEst - Controle de Estoque & Frente de Caixa (PDV)</title>
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- FontAwesome Icons CDN -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+  <!-- Estilos Customizados & Print Media Rules -->
+  <link rel="stylesheet" href="css/custom.css">
+</head>
+<body class="h-full flex flex-col antialiased selection:bg-indigo-500 selection:text-white">
+
+  <!-- Container de Notificações Toast -->
+  <div id="toast-container" class="fixed top-4 right-4 z-50 flex flex-col space-y-2 max-w-sm pointer-events-none"></div>
+
+  <!-- Cabeçalho Principal (Oculto na impressão do recibo) -->
+  <header class="no-print bg-slate-950/80 backdrop-blur-md border-b border-slate-800 sticky top-0 z-30">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex items-center justify-between h-16">
+        <!-- Logo e Título -->
+        <div class="flex items-center space-x-3">
+          <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 to-emerald-500 flex items-center justify-center shadow-lg shadow-indigo-500/20">
+            <i class="fa-solid fa-cash-register text-white text-xl"></i>
+          </div>
+          <div>
+            <h1 class="text-lg font-bold tracking-tight text-white flex items-center gap-2">
+              VendEst <span class="text-xs bg-indigo-500/20 text-indigo-300 font-semibold px-2 py-0.5 rounded-full border border-indigo-500/30">PDV & Estoque</span>
+            </h1>
+            <p class="text-xs text-slate-400">Sistema Frente de Caixa 100% Offline</p>
+          </div>
+        </div>
+
+        <!-- Atalhos de Teclado & Status -->
+        <div class="hidden md:flex items-center space-x-6">
+          <div class="flex items-center space-x-4 text-xs font-mono text-slate-400 bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-800">
+            <span class="flex items-center gap-1"><kbd class="bg-slate-800 text-slate-200 px-1.5 py-0.5 rounded border border-slate-700 font-bold">F2</kbd> Leitor</span>
+            <span class="flex items-center gap-1"><kbd class="bg-slate-800 text-slate-200 px-1.5 py-0.5 rounded border border-slate-700 font-bold">F4</kbd> Pagar</span>
+            <span class="flex items-center gap-1"><kbd class="bg-slate-800 text-slate-200 px-1.5 py-0.5 rounded border border-slate-700 font-bold">ESC</kbd> Limpar</span>
+          </div>
+
+          <div class="flex items-center space-x-2 text-xs font-medium text-emerald-400 bg-emerald-500/10 px-3 py-1.5 rounded-full border border-emerald-500/20">
+            <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+            <span>IndexedDB Ativo</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Barra de Navegação por Abas (Oculta na impressão) -->
+  <nav class="no-print bg-slate-900 border-b border-slate-800/80 px-4 py-2 sticky top-16 z-20">
+    <div class="max-w-7xl mx-auto flex items-center space-x-2 overflow-x-auto">
+      <button id="btn-tab-pdv" onclick="showTab('pdv')" class="nav-tab-btn flex items-center space-x-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all duration-200 bg-indigo-600 text-white shadow-md">
+        <i class="fa-solid fa-barcode"></i>
+        <span>Frente de Caixa (PDV)</span>
+      </button>
+
+      <button id="btn-tab-stock" onclick="showTab('stock')" class="nav-tab-btn flex items-center space-x-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all duration-200 text-slate-400 hover:bg-slate-800 hover:text-slate-200">
+        <i class="fa-solid fa-boxes-stacked"></i>
+        <span>Gestão de Estoque</span>
+      </button>
+
+      <button id="btn-tab-reports" onclick="showTab('reports')" class="nav-tab-btn flex items-center space-x-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all duration-200 text-slate-400 hover:bg-slate-800 hover:text-slate-200">
+        <i class="fa-solid fa-chart-line"></i>
+        <span>Vendas & Relatórios</span>
+      </button>
+
+      <button id="btn-tab-backup" onclick="showTab('backup')" class="nav-tab-btn flex items-center space-x-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all duration-200 text-slate-400 hover:bg-slate-800 hover:text-slate-200">
+        <i class="fa-solid fa-database"></i>
+        <span>Backups & Dados</span>
+      </button>
+
+      <button id="btn-tab-config" onclick="showTab('config')" class="nav-tab-btn flex items-center space-x-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all duration-200 text-slate-400 hover:bg-slate-800 hover:text-slate-200">
+        <i class="fa-solid fa-gear"></i>
+        <span>Configurações</span>
+      </button>
+    </div>
+  </nav>
+
+  <!-- Conteúdo Principal das Abas -->
+  <main class="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8">
+
+    <!-- ==================================================================== -->
+    <!-- ABA 1: FRENTE DE CAIXA (PDV)                                         -->
+    <!-- ==================================================================== -->
+    <div id="tab-pdv" class="tab-content grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+      <!-- Coluna Esquerda: Bípagem e Busca de Produtos -->
+      <div class="lg:col-span-5 space-y-4 flex flex-col">
+        <div class="bg-slate-800/80 rounded-2xl p-5 border border-slate-700/60 shadow-xl relative">
+          <label for="pdv-barcode-input" class="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
+            <i class="fa-solid fa-barcode mr-1 text-indigo-400"></i> Leitor / Busca Rápida (Pressione F2)
+          </label>
+          <div class="relative">
+            <input type="text" id="pdv-barcode-input" oninput="pdvModule.renderSearchResults(this.value)" placeholder="Bipe o código de barras ou digite o nome/SKU..." autocomplete="off" class="w-full bg-slate-900 border-2 border-indigo-500/50 focus:border-indigo-400 rounded-xl px-4 py-3 pl-11 text-base text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-4 focus:ring-indigo-500/20 font-medium transition-all">
+            <i class="fa-solid fa-magnifying-glass absolute left-4 top-4 text-slate-400 text-base"></i>
+          </div>
+
+          <!-- Dropdown Autocomplete de Busca -->
+          <div id="pdv-search-results" class="hidden absolute left-0 right-0 top-full mt-2 bg-slate-800 border border-slate-700 rounded-xl shadow-2xl z-40 max-h-72 overflow-y-auto divide-y divide-slate-700/50"></div>
+        </div>
+
+        <!-- Instruções de Uso / Dicas Rápidas -->
+        <div class="bg-slate-800/40 rounded-2xl p-5 border border-slate-800/80 flex-1 flex flex-col justify-between relative">
+          <div>
+            <h3 class="text-sm font-bold text-slate-200 mb-3 flex items-center gap-2">
+              <i class="fa-solid fa-bolt text-amber-400"></i> Operação de Caixa Rápida
+            </h3>
+            <ul class="space-y-2 text-xs text-slate-400">
+              <li class="flex items-start gap-2">
+                <i class="fa-solid fa-check text-emerald-400 mt-0.5"></i>
+                <span>Conecte qualquer <strong>Leitor USB de Código de Barras</strong>. Ao bipar, o item entra direto no carrinho.</span>
+              </li>
+              <li class="flex items-start gap-2">
+                <i class="fa-solid fa-keyboard text-indigo-400 mt-0.5"></i>
+                <span>Use o atalho <strong class="text-slate-200">F4</strong> para abrir a tela de pagamento instantaneamente.</span>
+              </li>
+              <li class="flex items-start gap-2">
+                <i class="fa-solid fa-shield-halved text-cyan-400 mt-0.5"></i>
+                <span>O estoque é atualizado em tempo real no <strong>IndexedDB local</strong> do navegador.</span>
+              </li>
+            </ul>
+          </div>
+
+          <div class="mt-6 pt-4 border-t border-slate-800 flex items-center justify-between text-xs">
+            <span class="text-slate-400">Total acumulado na aba:</span>
+            <span id="pdv-header-total" class="font-extrabold text-lg text-emerald-400">R$ 0,00</span>
+          </div>
+          
+          <!-- Overlay de Caixa Fechado (aparece sobre os controles) -->
+          <div id="caixa-closed-overlay" class="absolute inset-0 bg-slate-900/90 backdrop-blur-md rounded-2xl flex flex-col items-center justify-center border border-slate-700/80 z-20">
+            <i class="fa-solid fa-lock text-4xl text-slate-500 mb-3"></i>
+            <h3 class="text-base font-bold text-slate-200 mb-1">Caixa Fechado</h3>
+            <p class="text-xs text-slate-400 text-center px-4 mb-4">Você precisa abrir o caixa para iniciar as vendas.</p>
+            <button onclick="pdvModule.openCashRegisterModal()" class="bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-2 px-6 rounded-xl shadow-lg transition-all text-sm flex items-center gap-2">
+              <i class="fa-solid fa-lock-open"></i> Abrir Caixa Agora
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Coluna Direita: Carrinho de Compras -->
+      <div class="lg:col-span-7 bg-slate-800/80 rounded-2xl border border-slate-700/60 shadow-xl flex flex-col overflow-hidden">
+        <!-- Banner Topo do Carrinho -->
+        <div class="p-4 bg-slate-950/60 border-b border-slate-700/60 flex items-center justify-between">
+          <div class="flex items-center space-x-2">
+            <i class="fa-solid fa-cart-shopping text-indigo-400"></i>
+            <h2 class="font-bold text-slate-200 text-base">Carrinho de Compras</h2>
+          </div>
+          <span id="pdv-cart-item-count" class="text-xs font-semibold text-indigo-300 bg-indigo-500/20 px-2.5 py-1 rounded-full border border-indigo-500/30">
+            0 itens
+          </span>
+        </div>
+
+        <!-- Tabela do Carrinho -->
+        <div class="flex-1 overflow-y-auto max-h-[380px] p-2">
+          <table class="w-full text-left border-collapse">
+            <thead>
+              <tr class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider border-b border-slate-700/60">
+                <th class="px-4 py-2">Item</th>
+                <th class="px-4 py-2">Preço Unit</th>
+                <th class="px-4 py-2">Qtd</th>
+                <th class="px-4 py-2">Total</th>
+                <th class="px-4 py-2 text-right">Ação</th>
+              </tr>
+            </thead>
+            <tbody id="pdv-cart-body" class="divide-y divide-slate-800">
+              <!-- Renderizado via JS -->
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Rodapé do Carrinho com Totais e Ações -->
+        <div class="p-5 bg-slate-950/80 border-t border-slate-700/60 space-y-4">
+          <div class="flex items-center justify-between text-sm text-slate-400">
+            <span>Subtotal:</span>
+            <span id="pdv-subtotal-price" class="font-semibold text-slate-200">R$ 0,00</span>
+          </div>
+
+          <div class="flex items-center justify-between text-sm text-slate-400">
+            <label for="pdv-discount-input" class="cursor-pointer flex items-center gap-1 hover:text-slate-200">
+              <i class="fa-solid fa-tag text-xs text-amber-400"></i> Desconto (R$):
+            </label>
+            <input type="number" id="pdv-discount-input" min="0" step="0.5" value="0" class="w-24 bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-right text-sm text-slate-200 font-semibold focus:outline-none focus:border-indigo-500">
+          </div>
+
+          <div class="flex items-center justify-between pt-2 border-t border-slate-800">
+            <span class="text-base font-bold text-slate-100">TOTAL A PAGAR:</span>
+            <span id="pdv-total-price" class="text-2xl font-black text-emerald-400">R$ 0,00</span>
+          </div>
+
+          <!-- Botões de Ação -->
+          <div class="grid grid-cols-2 gap-3 pt-2">
+            <button onclick="pdvModule.clearCart()" class="w-full flex items-center justify-center space-x-2 bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold py-3 px-4 rounded-xl border border-slate-700 transition-colors text-sm">
+              <i class="fa-solid fa-trash-can"></i>
+              <span>Limpar (ESC)</span>
+            </button>
+            <button onclick="pdvModule.openPaymentModal()" class="w-full flex items-center justify-center space-x-2 bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white font-bold py-3 px-4 rounded-xl shadow-lg shadow-emerald-600/30 transition-all text-sm">
+              <i class="fa-solid fa-check"></i>
+              <span>Pagar (F4)</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ==================================================================== -->
+    <!-- ABA 2: GESTÃO DE ESTOQUE                                             -->
+    <!-- ==================================================================== -->
+    <div id="tab-stock" class="tab-content hidden space-y-6">
+
+      <!-- Cards de KPIs do Estoque -->
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div class="bg-slate-800/80 rounded-2xl p-5 border border-slate-700/60 shadow-lg flex items-center justify-between">
+          <div>
+            <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Total de Produtos</p>
+            <p id="kpi-total-items" class="text-2xl font-black text-slate-100 mt-1">0</p>
+          </div>
+          <div class="w-12 h-12 rounded-xl bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 flex items-center justify-center text-xl">
+            <i class="fa-solid fa-box font-bold"></i>
+          </div>
+        </div>
+
+        <div class="bg-slate-800/80 rounded-2xl p-5 border border-slate-700/60 shadow-lg flex items-center justify-between">
+          <div>
+            <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Alertas de Estoque Baixo</p>
+            <p id="kpi-low-stock-count" class="text-2xl font-black text-amber-400 mt-1">0</p>
+          </div>
+          <div class="w-12 h-12 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/20 flex items-center justify-center text-xl">
+            <i class="fa-solid fa-triangle-exclamation"></i>
+          </div>
+        </div>
+
+        <div class="bg-slate-800/80 rounded-2xl p-5 border border-slate-700/60 shadow-lg flex items-center justify-between">
+          <div>
+            <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Valor Total do Estoque</p>
+            <p id="kpi-stock-total-value" class="text-2xl font-black text-emerald-400 mt-1">R$ 0,00</p>
+          </div>
+          <div class="w-12 h-12 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center justify-center text-xl">
+            <i class="fa-solid fa-sack-dollar"></i>
+          </div>
+        </div>
+      </div>
+
+      <!-- Barra de Controle do Estoque (Busca, Filtro e Novo Produto) -->
+      <div class="bg-slate-800/80 rounded-2xl p-4 border border-slate-700/60 shadow-lg flex flex-col md:flex-row items-center justify-between gap-4">
+        <div class="flex flex-col sm:flex-row items-center gap-3 w-full md:w-auto flex-1">
+          <!-- Input de Busca -->
+          <div class="relative w-full sm:w-80">
+            <input type="text" id="stock-search-input" placeholder="Buscar por Nome ou Código SKU/EAN..." class="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2.5 pl-10 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500">
+            <i class="fa-solid fa-magnifying-glass absolute left-3.5 top-3 text-slate-500 text-xs"></i>
+          </div>
+
+          <!-- Filtro de Categoria -->
+          <select id="stock-category-filter" class="w-full sm:w-52 bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-sm text-slate-200 focus:outline-none focus:border-indigo-500">
+            <option value="ALL">Todas as Categorias</option>
+          </select>
+        </div>
+
+        <!-- Botão Novo Produto -->
+        <div class="flex flex-col sm:flex-row items-center gap-3 w-full md:w-auto">
+          <button id="btn-add-product" onclick="stockModule.openProductModal()" class="w-full sm:w-auto flex items-center justify-center space-x-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-2.5 px-5 rounded-xl shadow-lg shadow-indigo-600/30 transition-all text-sm cursor-pointer">
+            <i class="fa-solid fa-plus"></i>
+            <span>Novo Produto</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Tabela de Estoque -->
+      <div class="bg-slate-800/80 rounded-2xl border border-slate-700/60 shadow-xl overflow-hidden">
+        <div class="overflow-x-auto">
+          <table class="w-full text-left border-collapse">
+            <thead>
+              <tr class="bg-slate-950/60 text-slate-400 text-xs font-semibold uppercase tracking-wider border-b border-slate-700/60">
+                <th class="px-6 py-4">Código (SKU/EAN)</th>
+                <th class="px-6 py-4">Nome do Produto</th>
+                <th class="px-6 py-4">Categoria</th>
+                <th class="px-6 py-4">Preço Custo</th>
+                <th class="px-6 py-4">Preço Venda</th>
+                <th class="px-6 py-4">Estoque</th>
+                <th class="px-6 py-4 text-right">Ações</th>
+              </tr>
+            </thead>
+            <tbody id="stock-table-body" class="divide-y divide-slate-800">
+              <!-- Renderizado via JS -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ==================================================================== -->
+    <!-- ABA 3: VENDAS & RELATÓRIOS                                           -->
+    <!-- ==================================================================== -->
+    <div id="tab-reports" class="tab-content hidden space-y-6">
+
+      <!-- Cards de KPIs do Relatório -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div class="bg-slate-800/80 rounded-2xl p-5 border border-slate-700/60 shadow-lg">
+          <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Faturamento Total</p>
+          <p id="report-total-revenue" class="text-2xl font-black text-emerald-400 mt-1">R$ 0,00</p>
+        </div>
+
+        <div class="bg-slate-800/80 rounded-2xl p-5 border border-slate-700/60 shadow-lg">
+          <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Ticket Médio</p>
+          <p id="report-average-ticket" class="text-2xl font-black text-indigo-400 mt-1">R$ 0,00</p>
+        </div>
+
+        <div class="bg-slate-800/80 rounded-2xl p-5 border border-slate-700/60 shadow-lg">
+          <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Total de Pedidos</p>
+          <p id="report-total-orders" class="text-2xl font-black text-slate-100 mt-1">0</p>
+        </div>
+
+        <div class="bg-slate-800/80 rounded-2xl p-5 border border-slate-700/60 shadow-lg">
+          <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Itens Vendidos</p>
+          <p id="report-total-items-sold" class="text-2xl font-black text-cyan-400 mt-1">0</p>
+        </div>
+      </div>
+
+      <!-- Barra de Filtros por Período -->
+      <div class="bg-slate-800/80 rounded-2xl p-4 border border-slate-700/60 shadow-lg flex flex-col md:flex-row items-center justify-between gap-4">
+        <div class="flex items-center space-x-3 w-full md:w-auto">
+          <i class="fa-solid fa-filter text-indigo-400"></i>
+          <span class="text-sm font-semibold text-slate-300">Filtrar por Período:</span>
+          <select id="report-period-filter" class="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-indigo-500">
+            <option value="TODAY">Hoje</option>
+            <option value="WEEK">Últimos 7 Dias</option>
+            <option value="MONTH">Este Mês</option>
+            <option value="ALL" selected>Todas as Vendas</option>
+            <option value="CUSTOM">Personalizado</option>
+          </select>
+        </div>
+
+        <!-- Container de Data Personalizada e Fechar Caixa -->
+        <div class="flex items-center space-x-3 w-full md:w-auto">
+          <div id="report-custom-date-container" class="hidden flex items-center space-x-2">
+            <input type="date" id="report-start-date" class="bg-slate-900 border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-slate-200">
+            <span class="text-slate-500 text-xs">até</span>
+            <input type="date" id="report-end-date" class="bg-slate-900 border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-slate-200">
+            <button id="btn-apply-custom-date" class="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold px-3 py-1.5 rounded-xl transition-colors">
+              Filtrar
+            </button>
+          </div>
+          
+          <button id="btn-close-register" onclick="pdvModule.closeRegisterModal()" class="flex items-center justify-center space-x-2 bg-rose-600/20 hover:bg-rose-600 text-rose-400 hover:text-white border border-rose-600/30 hover:border-rose-600 font-bold py-2 px-4 rounded-xl shadow-lg transition-all text-sm cursor-pointer">
+            <i class="fa-solid fa-cash-register"></i>
+            <span>Fechar Caixa</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Tabela do Histórico de Vendas -->
+      <div class="bg-slate-800/80 rounded-2xl border border-slate-700/60 shadow-xl overflow-hidden">
+        <div class="overflow-x-auto">
+          <table class="w-full text-left border-collapse">
+            <thead>
+              <tr class="bg-slate-950/60 text-slate-400 text-xs font-semibold uppercase tracking-wider border-b border-slate-700/60">
+                <th class="px-6 py-4">Cód. Venda</th>
+                <th class="px-6 py-4">Data e Hora</th>
+                <th class="px-6 py-4">Forma de Pagto</th>
+                <th class="px-6 py-4">Qtd Itens</th>
+                <th class="px-6 py-4">Valor Total</th>
+                <th class="px-6 py-4 text-right">Ações</th>
+              </tr>
+            </thead>
+            <tbody id="report-sales-table-body" class="divide-y divide-slate-800">
+              <!-- Renderizado via JS -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ==================================================================== -->
+    <!-- ABA 4: BACKUPS & CONFIGURAÇÕES                                       -->
+    <!-- ==================================================================== -->
+    <div id="tab-backup" class="tab-content hidden space-y-6">
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+
+        <!-- Card Exportar Backup JSON -->
+        <div class="bg-slate-800/80 rounded-2xl p-6 border border-slate-700/60 shadow-xl flex flex-col justify-between space-y-4">
+          <div>
+            <div class="w-12 h-12 rounded-xl bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 flex items-center justify-center text-xl mb-4">
+              <i class="fa-solid fa-file-arrow-down"></i>
+            </div>
+            <h3 class="text-base font-bold text-slate-100">Exportar Backup (.json)</h3>
+            <p class="text-xs text-slate-400 mt-2">
+              Baixa um arquivo JSON completo contendo todo o catálogo de produtos e histórico de vendas gravados no navegador.
+            </p>
+          </div>
+          <button id="btn-export-json" onclick="backupModule.exportJsonBackup()" class="w-full flex items-center justify-center space-x-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-2.5 px-4 rounded-xl shadow-lg shadow-indigo-600/30 transition-all text-sm cursor-pointer">
+            <i class="fa-solid fa-download"></i>
+            <span>Baixar Backup Completo</span>
+          </button>
+        </div>
+
+        <!-- Card Importar Backup JSON -->
+        <div class="bg-slate-800/80 rounded-2xl p-6 border border-slate-700/60 shadow-xl flex flex-col justify-between space-y-4">
+          <div>
+            <div class="w-12 h-12 rounded-xl bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 flex items-center justify-center text-xl mb-4">
+              <i class="fa-solid fa-file-arrow-up"></i>
+            </div>
+            <h3 class="text-base font-bold text-slate-100">Importar Backup (.json)</h3>
+            <p class="text-xs text-slate-400 mt-2">
+              Restaure um backup baixado anteriormente para transferir todos os dados para outro computador ou navegador.
+            </p>
+          </div>
+          <div>
+            <input type="file" id="input-import-json-file" accept=".json" class="hidden">
+            <button id="btn-import-json" onclick="document.getElementById('input-import-json-file').click()" class="w-full flex items-center justify-center space-x-2 bg-slate-700 hover:bg-slate-600 text-cyan-300 font-bold py-2.5 px-4 rounded-xl border border-slate-600 transition-all text-sm cursor-pointer">
+              <i class="fa-solid fa-upload"></i>
+              <span>Carregar Arquivo JSON</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Card Exportar CSV Estoque -->
+        <div class="bg-slate-800/80 rounded-2xl p-6 border border-slate-700/60 shadow-xl flex flex-col justify-between space-y-4">
+          <div>
+            <div class="w-12 h-12 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center justify-center text-xl mb-4">
+              <i class="fa-solid fa-file-excel"></i>
+            </div>
+            <h3 class="text-base font-bold text-slate-100">Exportar Estoque (.csv)</h3>
+            <p class="text-xs text-slate-400 mt-2">
+              Gera um arquivo de planilha CSV formatado com caracteres UTF-8 BOM para abertura perfeita no Microsoft Excel.
+            </p>
+          </div>
+          <button id="btn-export-csv" onclick="backupModule.exportStockCsv()" class="w-full flex items-center justify-center space-x-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2.5 px-4 rounded-xl shadow-lg shadow-emerald-600/30 transition-all text-sm cursor-pointer">
+            <i class="fa-solid fa-table"></i>
+            <span>Exportar Planilha Excel</span>
+          </button>
+        </div>
+
+      </div>
+
+      <!-- Informações do Sistema -->
+      <div class="bg-slate-800/40 rounded-2xl p-6 border border-slate-800 text-xs text-slate-400 space-y-2">
+        <h4 class="font-bold text-sm text-slate-200 flex items-center gap-2">
+          <i class="fa-solid fa-circle-info text-indigo-400"></i> Sobre o Armazenamento Local
+        </h4>
+        <p>
+          Este sistema foi desenvolvido sob a arquitetura BMAD para rodar 100% offline. Todos os dados permanecem salvos localmente na base de dados <strong>IndexedDB</strong> do seu navegador.
+        </p>
+        <p class="text-amber-400/90 font-medium">
+          <i class="fa-solid fa-lightbulb"></i> Recomendação: Faça downloads de backup em JSON periodicamente para salvar cópias de segurança de seu estoque e histórico de vendas.
+        </p>
+      </div>
+
+    </div>
+
+    <!-- ==================================================================== -->
+    <!-- ABA 4: CONFIGURAÇÕES / PERFIL DA EMPRESA                             -->
+    <!-- ==================================================================== -->
+    <div id="tab-config" class="tab-content hidden space-y-6">
+      <div class="bg-slate-800/80 rounded-2xl p-6 border border-slate-700/60 shadow-lg max-w-2xl mx-auto">
+        <h2 class="text-lg font-bold text-slate-100 mb-4 flex items-center gap-2">
+          <i class="fa-solid fa-store text-indigo-400"></i> Perfil da Adega / Estabelecimento
+        </h2>
+        <p class="text-sm text-slate-400 mb-6 border-b border-slate-700 pb-4">
+          Estas informações aparecerão no cabeçalho do cupom impresso de vendas.
+        </p>
+
+        <form id="form-config" onsubmit="event.preventDefault(); appModule.saveConfig();" class="space-y-4">
+          <div>
+            <label class="block text-xs font-semibold text-slate-400 mb-1">Nome Fantasia / Razão Social</label>
+            <input type="text" id="config-empresa-nome" placeholder="Ex: VendEst Comercio PDV" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-indigo-500">
+          </div>
+          
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label class="block text-xs font-semibold text-slate-400 mb-1">CNPJ</label>
+              <input type="text" id="config-empresa-cnpj" placeholder="00.000.000/0001-00" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-indigo-500">
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-400 mb-1">Telefone / WhatsApp</label>
+              <input type="text" id="config-empresa-telefone" placeholder="(00) 00000-0000" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-indigo-500">
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-xs font-semibold text-slate-400 mb-1">Endereço Completo</label>
+            <input type="text" id="config-empresa-endereco" placeholder="Ex: Rua das Flores, 123 - Centro" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-indigo-500">
+          </div>
+
+          <div class="pt-4 flex justify-end">
+            <button type="submit" class="px-5 py-2.5 rounded-xl text-sm font-bold bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg transition-all flex items-center gap-2 cursor-pointer">
+              <i class="fa-solid fa-floppy-disk"></i>
+              <span>Salvar Dados da Empresa</span>
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+    
+  </main>
+
+  <!-- ==================================================================== -->
+  <!-- MODAIS DO SISTEMA                                                    -->
+  <!-- ==================================================================== -->
+
+  <!-- MODAL: Adicionar / Editar Produto -->
+  <div id="modal-product" class="modal-container hidden fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4 no-print">
+    <div class="bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden">
+      <div class="p-5 bg-slate-950/60 border-b border-slate-800 flex items-center justify-between">
+        <h3 id="modal-product-title" class="font-bold text-base text-slate-100">Novo Produto</h3>
+        <button onclick="stockModule.closeProductModal()" class="text-slate-400 hover:text-slate-200">
+          <i class="fa-solid fa-xmark text-lg"></i>
+        </button>
+      </div>
+
+      <form id="form-product" onsubmit="event.preventDefault(); stockModule.handleFormSubmit(event);" class="p-6 space-y-4">
+        <div>
+          <label class="block text-xs font-semibold text-slate-400 mb-1">Código de Barras / SKU / EAN *</label>
+          <input type="text" id="product-code" required placeholder="Ex: 7891000100101" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-sm font-mono text-slate-100 focus:outline-none focus:border-indigo-500">
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold text-slate-400 mb-1">Nome do Produto *</label>
+          <input type="text" id="product-name" required placeholder="Ex: Coca-Cola 350ml" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-indigo-500">
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold text-slate-400 mb-1">Categoria</label>
+          <input type="text" id="product-category" placeholder="Ex: Bebidas, Mercearia..." class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-indigo-500">
+        </div>
+
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div>
+            <label class="block text-xs font-semibold text-slate-400 mb-1">Preço Custo (R$)</label>
+            <input type="number" step="0.01" min="0" id="product-cost-price" placeholder="0.00" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-indigo-500">
+          </div>
+
+          <div>
+            <label class="block text-xs font-semibold text-slate-400 mb-1">Preço Venda (R$) *</label>
+            <input type="number" step="0.01" min="0" id="product-sell-price" required placeholder="0.00" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-sm font-semibold text-emerald-400 focus:outline-none focus:border-indigo-500">
+          </div>
+
+          <div>
+            <label class="block text-xs font-semibold text-slate-400 mb-1">Qtd Estoque *</label>
+            <input type="number" min="0" id="product-stock-qty" required placeholder="0" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-sm font-semibold text-slate-100 focus:outline-none focus:border-indigo-500">
+          </div>
+
+          <div>
+            <label class="block text-xs font-semibold text-slate-400 mb-1">Estoque Mín. *</label>
+            <input type="number" min="0" id="product-min-stock-qty" placeholder="5" value="5" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-sm font-semibold text-slate-100 focus:outline-none focus:border-indigo-500">
+          </div>
+        </div>
+
+        <div class="pt-4 flex justify-end space-x-3 border-t border-slate-800">
+          <button type="button" id="btn-cancel-product-modal" onclick="stockModule.closeProductModal()" class="px-4 py-2 rounded-xl text-sm font-semibold text-slate-400 hover:bg-slate-800 transition-colors cursor-pointer">
+            Cancelar
+          </button>
+          <button type="submit" onclick="stockModule.handleFormSubmit(event)" class="px-5 py-2 rounded-xl text-sm font-bold bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg transition-all cursor-pointer">
+            Salvar Produto
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: Finalizar Pagamento PDV -->
+  <div id="modal-payment" class="modal-container hidden fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4 no-print">
+    <div class="bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl max-w-md w-full overflow-hidden">
+      <div class="p-5 bg-slate-950/60 border-b border-slate-800 flex items-center justify-between">
+        <h3 class="font-bold text-base text-slate-100 flex items-center gap-2">
+          <i class="fa-solid fa-credit-card text-indigo-400"></i> Finalizar Venda (F4)
+        </h3>
+        <button onclick="pdvModule.closePaymentModal()" class="text-slate-400 hover:text-slate-200">
+          <i class="fa-solid fa-xmark text-lg"></i>
+        </button>
+      </div>
+
+      <div class="p-6 space-y-5">
+        <!-- Exibição do Total -->
+        <div class="bg-slate-950 p-4 rounded-xl text-center border border-slate-800">
+          <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider block">Valor Total a Pagar</span>
+          <span id="pdv-modal-total" class="text-3xl font-black text-emerald-400 mt-1 block">R$ 0,00</span>
+        </div>
+
+        <!-- Opções de Forma de Pagamento -->
+        <div>
+          <label class="block text-xs font-semibold text-slate-400 mb-2">Forma de Pagamento:</label>
+          <div class="grid grid-cols-2 gap-2">
+            <button type="button" data-method="DINHEIRO" class="pdv-payment-btn ring-2 ring-indigo-500 bg-indigo-600/30 border-indigo-500 p-3 rounded-xl border flex flex-col items-center justify-center transition-all text-xs font-bold">
+              <i class="fa-solid fa-money-bill-wave text-emerald-400 text-lg mb-1"></i>
+              <span>Dinheiro</span>
+            </button>
+            <button type="button" data-method="PIX" class="pdv-payment-btn p-3 rounded-xl border border-slate-700 bg-slate-950 hover:bg-slate-800 flex flex-col items-center justify-center transition-all text-xs font-bold">
+              <i class="fa-solid fa-qrcode text-cyan-400 text-lg mb-1"></i>
+              <span>PIX</span>
+            </button>
+            <button type="button" data-method="CREDITO" class="pdv-payment-btn p-3 rounded-xl border border-slate-700 bg-slate-950 hover:bg-slate-800 flex flex-col items-center justify-center transition-all text-xs font-bold">
+              <i class="fa-solid fa-credit-card text-purple-400 text-lg mb-1"></i>
+              <span>Cartão Crédito</span>
+            </button>
+            <button type="button" data-method="DEBITO" class="pdv-payment-btn p-3 rounded-xl border border-slate-700 bg-slate-950 hover:bg-slate-800 flex flex-col items-center justify-center transition-all text-xs font-bold">
+              <i class="fa-solid fa-wallet text-blue-400 text-lg mb-1"></i>
+              <span>Cartão Débito</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Seção de Dinheiro e Troco -->
+        <div id="pdv-cash-section" class="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-3">
+          <div>
+            <label for="pdv-amount-received" class="block text-xs font-semibold text-slate-400 mb-1">Valor Recebido (R$):</label>
+            <input type="number" step="0.01" min="0" id="pdv-amount-received" oninput="pdvModule.calculateChange()" onchange="pdvModule.calculateChange()" onkeyup="pdvModule.calculateChange()" onblur="pdvModule.calculateChange()" onkeydown="if(event.key==='Enter'){ event.preventDefault(); pdvModule.calculateChange(); pdvModule.submitSale(); }" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-base font-bold text-slate-100 focus:outline-none focus:border-indigo-500">
+            <p id="pdv-cash-status" class="text-xs font-semibold text-emerald-400 mt-1">Valor recebido suficiente.</p>
+          </div>
+
+          <div class="flex justify-between items-center pt-2 border-t border-slate-800">
+            <span class="text-xs font-bold text-slate-300">Troco a Devolver:</span>
+            <span id="pdv-change-amount" class="text-lg font-black text-amber-400">R$ 0,00</span>
+          </div>
+        </div>
+
+        <div class="pt-2 flex space-x-3">
+          <button onclick="pdvModule.closePaymentModal()" class="w-1/3 py-3 rounded-xl font-semibold text-slate-400 hover:bg-slate-800 text-sm">
+            Cancelar
+          </button>
+          <button onclick="pdvModule.submitSale()" class="w-2/3 py-3 rounded-xl font-bold bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-600/30 text-sm">
+            Concluir Venda
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: Cupom Não Fiscal / Recibo -->
+  <div id="modal-receipt" class="modal-container hidden fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4">
+    <div class="bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl max-w-sm w-full overflow-hidden flex flex-col max-h-[90vh]">
+      <div class="p-4 bg-slate-950/60 border-b border-slate-800 flex items-center justify-between no-print">
+        <h3 class="font-bold text-sm text-slate-100 flex items-center gap-2">
+          <i class="fa-solid fa-receipt text-indigo-400"></i> Cupom Não Fiscal
+        </h3>
+        <button onclick="pdvModule.closeReceiptModal()" class="text-slate-400 hover:text-slate-200">
+          <i class="fa-solid fa-xmark text-base"></i>
+        </button>
+      </div>
+
+      <!-- Área de Visualização do Recibo Imprimível -->
+      <div class="p-4 overflow-y-auto flex-1 bg-slate-800">
+        <div id="print-receipt-area">
+          <div id="receipt-content" class="receipt-paper p-4 rounded-lg shadow border border-slate-300 bg-white">
+            <!-- Conteúdo gerado dinamicamente via JS -->
+          </div>
+        </div>
+      </div>
+
+      <div class="p-4 bg-slate-950 border-t border-slate-800 flex space-x-2 no-print relative z-50 pointer-events-auto">
+        <button onclick="pdvModule.closeReceiptModal()" class="w-1/2 py-2.5 rounded-xl font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs cursor-pointer">
+          Fechar
+        </button>
+        <button onclick="window.print()" class="w-1/2 py-2.5 rounded-xl font-bold bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg text-xs flex items-center justify-center gap-1.5 cursor-pointer">
+          <i class="fa-solid fa-print"></i>
+          <span>Imprimir Comprovante</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: Detalhes da Venda (Relatórios) -->
+  <div id="modal-sale-detail" class="modal-container hidden fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4 no-print">
+    <div class="bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden flex flex-col max-h-[90vh]">
+      <div class="p-4 bg-slate-950/60 border-b border-slate-800 flex items-center justify-between">
+        <h3 class="font-bold text-sm text-slate-100 flex items-center gap-2">
+          <i class="fa-solid fa-list text-indigo-400"></i> Detalhes da Venda
+        </h3>
+        <button onclick="reportsModule.closeSaleDetailModal()" class="text-slate-400 hover:text-slate-200">
+          <i class="fa-solid fa-xmark text-base"></i>
+        </button>
+      </div>
+
+      <div class="p-4 overflow-y-auto flex-1">
+        <div id="sale-detail-content" class="space-y-4">
+          <!-- Detalhes preenchidos via JS -->
+        </div>
+      </div>
+
+      <div class="p-4 bg-slate-950 border-t border-slate-800 flex justify-end">
+        <button onclick="reportsModule.closeSaleDetailModal()" class="px-6 py-2.5 rounded-xl font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm">
+          Fechar
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: Abrir Caixa -->
+  <div id="modal-cash-open" class="modal-container hidden fixed inset-0 z-50 flex items-center justify-center bg-slate-950/90 backdrop-blur-sm p-4 no-print">
+    <div class="bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl max-w-sm w-full overflow-hidden">
+      <div class="p-5 bg-slate-950/60 border-b border-slate-800 flex items-center justify-center">
+        <h3 class="font-bold text-lg text-slate-100 flex items-center gap-2">
+          <i class="fa-solid fa-cash-register text-indigo-400"></i> Abertura de Caixa
+        </h3>
+      </div>
+      <div class="p-6 space-y-4 text-center">
+        <p class="text-sm text-slate-400 mb-4">Informe o valor inicial (Fundo de Troco) para iniciar o turno de vendas no PDV.</p>
+        <div class="relative max-w-xs mx-auto">
+          <span class="absolute left-4 top-3 text-slate-400 font-bold">R$</span>
+          <input type="number" id="cash-open-amount" step="0.01" min="0" value="0.00" class="w-full bg-slate-950 border-2 border-indigo-500/50 rounded-xl px-4 py-3 pl-12 text-2xl font-black text-emerald-400 focus:outline-none focus:border-indigo-500 transition-colors">
+        </div>
+        <button onclick="pdvModule.openRegister()" class="w-full mt-4 bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 rounded-xl shadow-lg shadow-indigo-600/30 transition-all text-sm flex items-center justify-center gap-2">
+          <i class="fa-solid fa-lock-open"></i> Iniciar Turno (Abrir Caixa)
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: Fechar Caixa -->
+  <div id="modal-cash-close" class="modal-container hidden fixed inset-0 z-50 flex items-center justify-center bg-slate-950/90 backdrop-blur-sm p-4 no-print">
+    <div class="bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl max-w-md w-full overflow-hidden flex flex-col max-h-[90vh]">
+      <div class="p-5 bg-slate-950/60 border-b border-slate-800 flex items-center justify-between">
+        <h3 class="font-bold text-lg text-slate-100 flex items-center gap-2">
+          <i class="fa-solid fa-vault text-rose-400"></i> Fechamento de Caixa
+        </h3>
+        <button onclick="pdvModule.closeCashRegisterModal()" class="text-slate-400 hover:text-slate-200">
+          <i class="fa-solid fa-xmark text-lg"></i>
+        </button>
+      </div>
+      <div class="p-6 overflow-y-auto space-y-4">
+        <div class="bg-slate-950 rounded-xl p-4 border border-slate-800 text-center">
+          <p class="text-xs text-slate-400 uppercase font-semibold">Total em Caixa (Final)</p>
+          <p id="cash-close-total" class="text-3xl font-black text-emerald-400 mt-1">R$ 0,00</p>
+        </div>
+        <div class="space-y-2 text-sm">
+          <div class="flex justify-between items-center text-slate-300 py-1 border-b border-slate-800">
+            <span>Fundo Inicial:</span>
+            <span id="cash-close-initial" class="font-semibold text-slate-100">R$ 0,00</span>
+          </div>
+          <div class="flex justify-between items-center text-slate-300 py-1 border-b border-slate-800">
+            <span>Vendas em Dinheiro:</span>
+            <span id="cash-close-money" class="font-semibold text-slate-100">R$ 0,00</span>
+          </div>
+          <div class="flex justify-between items-center text-slate-300 py-1 border-b border-slate-800">
+            <span>Vendas no PIX:</span>
+            <span id="cash-close-pix" class="font-semibold text-slate-100">R$ 0,00</span>
+          </div>
+          <div class="flex justify-between items-center text-slate-300 py-1 border-b border-slate-800">
+            <span>Vendas Crédito/Débito:</span>
+            <span id="cash-close-cards" class="font-semibold text-slate-100">R$ 0,00</span>
+          </div>
+        </div>
+        
+        <div class="mt-4 pt-4 border-t border-slate-800 flex items-center gap-2">
+          <input type="checkbox" id="cash-close-backup-cb" checked class="w-4 h-4 text-indigo-600 bg-slate-900 border-slate-700 rounded focus:ring-indigo-500 focus:ring-2">
+          <label for="cash-close-backup-cb" class="text-xs text-slate-300 cursor-pointer">
+            Gerar arquivo de backup (.json) automaticamente ao fechar o caixa
+          </label>
+        </div>
+
+        <div class="pt-2 flex justify-end space-x-3">
+          <button onclick="pdvModule.closeCashRegisterModal()" class="px-4 py-2.5 rounded-xl text-sm font-semibold text-slate-400 hover:bg-slate-800 transition-colors">
+            Cancelar
+          </button>
+          <button onclick="pdvModule.closeRegister()" class="px-5 py-2.5 rounded-xl text-sm font-bold bg-rose-600 hover:bg-rose-500 text-white shadow-lg transition-all flex items-center gap-2">
+            <i class="fa-solid fa-lock"></i> Confirmar Fechamento
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Container Global de Loading -->
+  <div id="loading-overlay" class="hidden fixed inset-0 z-[100] flex flex-col items-center justify-center bg-slate-950/80 backdrop-blur-sm">
+  </div>
+
+  <!-- Scripts JavaScript (Em ordem de dependência) -->
+  <script src="js/db.js?v=20260820b"></script>
+  <script src="js/stock.js?v=20260820b"></script>
+  <script src="js/pdv.js?v=20260820c"></script>
+  <script src="js/reports.js?v=20260820b"></script>
+  <script src="js/backup.js?v=20260820b"></script>
+  <script src="js/app.js?v=20260820b"></script>
+</body>
+</html>
