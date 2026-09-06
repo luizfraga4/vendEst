@@ -174,41 +174,88 @@ class StockModule {
   }
 
   async openProductModal(productId = null) {
-    this.editingProductId = productId;
+    this.currentEditingId = productId;
+    this.editingProductId = productId; // mantendo fallback se algo usar
     const modal = document.getElementById('modal-product');
-    const modalTitle = document.getElementById('modal-product-title');
-    const form = document.getElementById('form-product');
-
-    if (!modal || !form) return;
-
-    form.reset();
+    const title = document.getElementById('modal-product-title');
+    
+    // Elementos do form
+    const formCodigo = document.getElementById('product-code');
+    const formNome = document.getElementById('product-name');
+    const formCategoria = document.getElementById('product-category');
+    const formQtd = document.getElementById('product-stock-qty');
+    const formCusto = document.getElementById('product-cost-price');
+    const formVenda = document.getElementById('product-sell-price');
+    const formMin = document.getElementById('product-min-stock-qty');
 
     if (productId) {
-      modalTitle.textContent = 'Editar Produto';
+      // Editar
       const produtos = await dbManager.listarProdutos();
-      const p = produtos.find(item => item.id === productId);
+      const p = produtos.find(x => x.id === productId);
       if (p) {
-        document.getElementById('product-code').value = p.codigo || p.code || '';
-        document.getElementById('product-name').value = p.nome || p.name || '';
-        document.getElementById('product-category').value = p.categoria || p.category || '';
-        document.getElementById('product-cost-price').value = p.precoCusto || p.costPrice || 0;
-        document.getElementById('product-sell-price').value = p.precoVenda || p.sellPrice || 0;
-        document.getElementById('product-stock-qty').value = p.quantidade || p.estoque || p.stockQty || 0;
-        document.getElementById('product-min-stock-qty').value = p.estoqueMinimo || 5;
+        title.innerHTML = '<i class="fa-solid fa-pen text-indigo-400"></i> Editar Produto';
+        formCodigo.value = p.codigo || p.code || '';
+        formNome.value = p.nome || p.name || '';
+        this.populateCategorySelect(p.categoria || p.category || 'Geral');
+        formQtd.value = p.quantidade || p.estoque || p.stockQty || 0;
+        formCusto.value = p.precoCusto || p.costPrice || 0;
+        formVenda.value = p.precoVenda || p.sellPrice || 0;
+        formMin.value = p.estoqueMinimo || p.minStock || 5;
       }
     } else {
-      modalTitle.textContent = 'Novo Produto';
-      document.getElementById('product-min-stock-qty').value = 5;
+      // Novo
+      title.innerHTML = '<i class="fa-solid fa-plus text-indigo-400"></i> Novo Produto';
+      document.getElementById('form-product').reset();
+      formMin.value = 5;
+      this.populateCategorySelect();
     }
 
     modal.classList.remove('hidden');
-    document.getElementById('product-code').focus();
+    formCodigo.focus();
+  }
+
+  populateCategorySelect(selected = null) {
+    const select = document.getElementById('product-category');
+    if (!select) return;
+
+    let options = '';
+    
+    // Se a categoria selecionada não estiver na lista global, adiciona temporariamente ao select
+    let cats = [...(window.appModule ? window.appModule.categorias : ['Geral'])];
+    if (selected && !cats.includes(selected)) {
+      cats.push(selected);
+    }
+    
+    cats.sort().forEach(c => {
+      options += `<option value="${c}">${c}</option>`;
+    });
+
+    options += `<option value="+ Nova Categoria" class="font-bold text-indigo-400">+ Nova Categoria...</option>`;
+    select.innerHTML = options;
+    
+    if (selected) {
+      select.value = selected;
+    }
+  }
+
+  handleCategoryChange(selectElement) {
+    if (selectElement.value === '+ Nova Categoria') {
+      const newCat = prompt('Digite o nome da nova categoria:');
+      if (newCat && newCat.trim() !== '') {
+        if (window.appModule) {
+          window.appModule.addCategory(newCat.trim()); // Isso irá repopular o select e selecionar
+        }
+      } else {
+        // Voltar para a primeira opção se cancelou
+        selectElement.selectedIndex = 0;
+      }
+    }
   }
 
   closeProductModal() {
     const modal = document.getElementById('modal-product');
-    if (modal) modal.classList.add('hidden');
-    this.editingProductId = null;
+    modal.classList.add('hidden');
+    this.currentEditingId = null;
   }
 
   async handleFormSubmit(e) {
@@ -216,7 +263,8 @@ class StockModule {
 
     const codigo = document.getElementById('product-code').value.trim();
     const nome = document.getElementById('product-name').value.trim();
-    const categoria = document.getElementById('product-category').value.trim() || 'Geral';
+    let categoria = document.getElementById('product-category').value.trim();
+    if (!categoria || categoria === '+ Nova Categoria') categoria = 'Geral';
     const precoCusto = parseFloat(document.getElementById('product-cost-price').value) || 0;
     const precoVenda = parseFloat(document.getElementById('product-sell-price').value) || 0;
     const quantidade = parseInt(document.getElementById('product-stock-qty').value, 10) || 0;

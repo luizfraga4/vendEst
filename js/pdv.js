@@ -9,6 +9,7 @@ class PDVModule {
     this.cart = [];
     this.catalog = [];
     this.selectedPaymentMethod = 'DINHEIRO';
+    this.payments = [];
     this.discount = 0;
     this.lastCompletedSale = null;
   }
@@ -72,9 +73,11 @@ class PDVModule {
     
     // Recuperar vendas a partir do momento de abertura
     let vendas = [];
+    let sangrias = [];
     try {
       const dbVendas = await dbManager.carregarRelatorioVendas();
       vendas = dbVendas.filter(v => new Date(v.data).getTime() >= aberturaTs);
+      sangrias = await dbManager.listarSangriasPorTurno(aberturaTs);
     } catch (err) {
       console.error(err);
     }
@@ -82,20 +85,40 @@ class PDVModule {
     let vendasDinheiro = 0;
     let vendasPix = 0;
     let vendasCartoes = 0;
+    let totalSangrias = 0;
 
     vendas.forEach(v => {
-      const val = parseFloat(v.total) || 0;
-      if (v.formaPagamento === 'DINHEIRO') vendasDinheiro += val;
-      else if (v.formaPagamento === 'PIX') vendasPix += val;
-      else vendasCartoes += val;
+      if (Array.isArray(v.pagamentos) && v.pagamentos.length > 0) {
+        v.pagamentos.forEach(p => {
+          const val = parseFloat(p.valor) || 0;
+          const formaUpper = String(p.forma || '').toUpperCase();
+          if (formaUpper.includes('DINHEIRO')) vendasDinheiro += val;
+          else if (formaUpper.includes('PIX')) vendasPix += val;
+          else vendasCartoes += val;
+        });
+      } else {
+        const val = parseFloat(v.total) || 0;
+        const formaUpper = String(v.formaPagamento || '').toUpperCase();
+        if (formaUpper.includes('DINHEIRO')) vendasDinheiro += val;
+        else if (formaUpper.includes('PIX')) vendasPix += val;
+        else vendasCartoes += val;
+      }
     });
 
-    const totalCaixaFinal = fundo + vendasDinheiro + vendasPix + vendasCartoes;
+    sangrias.forEach(s => {
+      totalSangrias += parseFloat(s.valor) || 0;
+    });
+
+    const totalCaixaFinal = fundo + vendasDinheiro + vendasPix + vendasCartoes - totalSangrias;
 
     document.getElementById('cash-close-initial').textContent = fundo.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
     document.getElementById('cash-close-money').textContent = vendasDinheiro.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
     document.getElementById('cash-close-pix').textContent = vendasPix.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
     document.getElementById('cash-close-cards').textContent = vendasCartoes.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    
+    const sangriasEl = document.getElementById('cash-close-sangrias');
+    if (sangriasEl) sangriasEl.textContent = `- ${totalSangrias.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`;
+
     document.getElementById('cash-close-total').textContent = totalCaixaFinal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
     const modal = document.getElementById('modal-cash-close');
@@ -112,6 +135,57 @@ class PDVModule {
 
     if (doBackup && window.backupModule) {
       window.backupModule.exportJsonBackup();
+    }
+  }
+
+  // --- CONTROLE DE SANGRIA ---
+  abrirModalSangria() {
+    if (!this.checkRegisterStatus()) {
+      showToast('O caixa está fechado! Sangria não permitida.', 'error');
+      return;
+    }
+    const modal = document.getElementById('modal-sangria');
+    if (modal) {
+      document.getElementById('sangria-amount').value = '';
+      document.getElementById('sangria-reason').value = '';
+      modal.classList.remove('hidden');
+      setTimeout(() => document.getElementById('sangria-amount').focus(), 100);
+    }
+  }
+
+  fecharModalSangria() {
+    const modal = document.getElementById('modal-sangria');
+    if (modal) modal.classList.add('hidden');
+  }
+
+  async confirmarSangria() {
+    const amountInput = document.getElementById('sangria-amount');
+    const reasonInput = document.getElementById('sangria-reason');
+
+    const valor = parseFloat(amountInput.value);
+    const motivo = reasonInput.value.trim();
+
+    if (isNaN(valor) || valor <= 0) {
+      showToast('Informe um valor válido para a sangria.', 'error');
+      return;
+    }
+
+    if (!motivo) {
+      showToast('Informe o motivo/descrição da sangria.', 'warning');
+      return;
+    }
+
+    try {
+      await dbManager.salvarSangria({
+        valor,
+        motivo,
+        autorizadoPor: window.authModule ? window.authModule.currentUser : 'Admin'
+      });
+      showToast('Sangria registrada com sucesso.', 'success');
+      this.fecharModalSangria();
+    } catch (err) {
+      console.error(err);
+      showToast('Erro ao registrar sangria.', 'error');
     }
   }
   // -----------------------
@@ -154,17 +228,6 @@ class PDVModule {
       });
     }
 
-    const paymentButtons = document.querySelectorAll('.pdv-payment-btn');
-    paymentButtons.forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        paymentButtons.forEach(b => b.classList.remove('ring-2', 'ring-indigo-500', 'bg-indigo-600/30', 'border-indigo-500'));
-        const currentBtn = e.currentTarget;
-        currentBtn.classList.add('ring-2', 'ring-indigo-500', 'bg-indigo-600/30', 'border-indigo-500');
-        this.selectedPaymentMethod = currentBtn.dataset.method;
-        this.toggleCashSection();
-      });
-    });
-
     const discountInput = document.getElementById('pdv-discount-input');
     if (discountInput) {
       discountInput.addEventListener('input', (e) => {
@@ -186,18 +249,7 @@ class PDVModule {
       let product = this.catalog.find(p => String(p.codigo || p.code || '').trim().toLowerCase() === q);
 
       if (!product) {
-        const matches = this.catalog.filter(p => {
-          const nome = p.nome || p.name || '';
-          return nome.toLowerCase().includes(q);
-        });
-
-        if (matches.length === 1) {
-          product = matches[0];
-        } else if (matches.length > 1) {
-          await this.renderSearchResults(trimmed);
-          showToast('Múltiplos produtos encontrados. Escolha o item desejado.', 'info');
-          return;
-        }
+        product = this.catalog.find(p => String(p.nome || p.name || '').trim().toLowerCase().includes(q));
       }
 
       if (product) {
@@ -206,67 +258,45 @@ class PDVModule {
         if (scanInput) scanInput.value = '';
         this.hideSearchResults();
       } else {
-        showToast(`Produto com código ou nome "${trimmed}" não encontrado.`, 'warning');
+        showToast(`Produto não encontrado com o termo "${trimmed}".`, 'error');
       }
     } catch (err) {
-      console.error('Erro na busca de produtos no PDV:', err);
+      console.error('Erro na bípagem:', err);
     }
   }
 
-  async renderSearchResults(query) {
+  renderSearchResults(query) {
     const resultsContainer = document.getElementById('pdv-search-results');
     if (!resultsContainer) return;
 
-    const trimmed = String(query || '').trim();
-    if (trimmed.length < 1) {
-      this.hideSearchResults();
+    if (!query || query.length < 2) {
+      resultsContainer.classList.add('hidden');
       return;
     }
 
-    try {
-      if (!this.catalog || this.catalog.length === 0) {
-        this.catalog = await dbManager.listarProdutos();
-      }
+    const q = query.toLowerCase();
+    const filtered = this.catalog.filter(p =>
+      String(p.nome || p.name || '').toLowerCase().includes(q) ||
+      String(p.codigo || p.code || '').toLowerCase().includes(q)
+    ).slice(0, 6);
 
-      const q = trimmed.toLowerCase();
-      const filtered = this.catalog.filter(p => {
-        const nome = (p.nome || p.name || '').toLowerCase();
-        const codigo = String(p.codigo || p.code || '').toLowerCase();
-        const categoria = (p.categoria || p.category || '').toLowerCase();
-        return nome.includes(q) || codigo.includes(q) || categoria.includes(q);
-      }).slice(0, 8);
-
-      if (filtered.length === 0) {
-        resultsContainer.innerHTML = `
-          <div class="p-3 text-center text-xs text-slate-400 font-medium">
-            <i class="fa-solid fa-circle-exclamation mr-1 text-amber-400"></i> Nenhum produto encontrado para "${trimmed}"
-          </div>
-        `;
-        resultsContainer.classList.remove('hidden');
-        return;
-      }
-
-      resultsContainer.innerHTML = filtered.map(p => {
-        const codigo = p.codigo || p.code || '';
-        const nome = p.nome || p.name || '';
-        const precoVenda = parseFloat(p.precoVenda || p.sellPrice || 0);
-        const estoque = parseInt(p.quantidade || p.estoque || p.stockQty || 0, 10);
-
-        return `
-          <div onclick="pdvModule.selectSearchResult(${p.id})" class="flex items-center justify-between p-3 hover:bg-slate-700/90 cursor-pointer border-b border-slate-700/50 last:border-0 transition-colors">
-            <div>
-              <p class="font-semibold text-sm text-slate-100">${nome}</p>
-              <p class="text-xs text-slate-400 font-mono">SKU: ${codigo} | Estoque: <span class="${estoque <= 5 ? 'text-amber-400 font-bold' : 'text-slate-300'}">${estoque} un</span></p>
-            </div>
-            <span class="font-bold text-emerald-400 text-sm">R$ ${precoVenda.toFixed(2)}</span>
-          </div>
-        `;
-      }).join('');
-
+    if (filtered.length === 0) {
+      resultsContainer.innerHTML = `<div class="p-3 text-xs text-slate-400 text-center">Nenhum produto encontrado</div>`;
       resultsContainer.classList.remove('hidden');
-    } catch (err) {
-      console.error('Erro ao renderizar resultados:', err);
+      return;
     }
+
+    resultsContainer.innerHTML = filtered.map(p => `
+      <div onclick="pdvModule.selectSearchResult(${p.id})" class="flex items-center justify-between p-3 hover:bg-slate-700/90 cursor-pointer border-b border-slate-700/50 last:border-0 transition-colors">
+        <div>
+          <p class="font-semibold text-sm text-slate-100">${p.nome || p.name || ''}</p>
+          <p class="text-xs text-slate-400 font-mono">SKU: ${p.codigo || p.code || ''} | Estoque: ${p.quantidade || p.estoque || 0} un</p>
+        </div>
+        <span class="font-bold text-emerald-400 text-sm">R$ ${parseFloat(p.precoVenda || 0).toFixed(2)}</span>
+      </div>
+    `).join('');
+
+    resultsContainer.classList.remove('hidden');
   }
 
   hideSearchResults() {
@@ -353,7 +383,7 @@ class PDVModule {
     const newPrice = parseFloat(value);
     if (isNaN(newPrice) || newPrice < 0) {
       showToast('Preço unitário inválido.', 'error');
-      this.renderCart(); // reseta o input para o valor anterior
+      this.renderCart();
       return;
     }
     this.cart[index].price = newPrice;
@@ -441,6 +471,145 @@ class PDVModule {
     `).join('');
   }
 
+  // --- GERENCIAMENTO DE MÚLTIPLOS PAGAMENTOS E FECHAMENTO ---
+  getPaymentLabel(method) {
+    const labels = {
+      'DINHEIRO': 'Dinheiro',
+      'PIX': 'PIX',
+      'CREDITO': 'Cartão Crédito',
+      'DEBITO': 'Cartão Débito'
+    };
+    return labels[method] || method;
+  }
+
+  selectPaymentMethod(method) {
+    this.selectedPaymentMethod = method;
+    const paymentButtons = document.querySelectorAll('.pdv-payment-btn');
+    paymentButtons.forEach(btn => {
+      if (btn.dataset.method === method) {
+        btn.classList.add('ring-2', 'ring-indigo-500', 'bg-indigo-600/30', 'border-indigo-500');
+        btn.classList.remove('bg-slate-900');
+      } else {
+        btn.classList.remove('ring-2', 'ring-indigo-500', 'bg-indigo-600/30', 'border-indigo-500');
+        btn.classList.add('bg-slate-900');
+      }
+    });
+
+    const subtotal = this.cart.reduce((sum, item) => sum + item.total, 0);
+    const totalVenda = Math.max(0, subtotal - this.discount);
+    const totalPago = this.payments.reduce((acc, p) => acc + p.valor, 0);
+    const restante = Math.max(0, totalVenda - totalPago);
+
+    const input = document.getElementById('pdv-amount-received');
+    if (input) {
+      input.value = restante > 0 ? restante.toFixed(2) : '';
+      input.focus();
+      input.select();
+    }
+  }
+
+  addPaymentFromInput() {
+    const input = document.getElementById('pdv-amount-received');
+    if (!input) return;
+    const val = parseFloat(input.value);
+    if (isNaN(val) || val <= 0) {
+      showToast('Digite um valor válido para o pagamento.', 'warning');
+      return;
+    }
+    this.addPayment(this.selectedPaymentMethod, val);
+  }
+
+  addPayment(method, valor) {
+    const val = parseFloat(valor);
+    if (isNaN(val) || val <= 0) return;
+
+    this.payments.push({
+      forma: method,
+      valor: val
+    });
+
+    this.updatePaymentTotals();
+    showToast(`Pagamento em ${this.getPaymentLabel(method)} (R$ ${val.toFixed(2)}) adicionado.`, 'success');
+  }
+
+  removePayment(index) {
+    if (index >= 0 && index < this.payments.length) {
+      const removed = this.payments.splice(index, 1)[0];
+      this.updatePaymentTotals();
+      if (removed) {
+        showToast(`Pagamento em ${this.getPaymentLabel(removed.forma)} removido.`, 'info');
+      }
+    }
+  }
+
+  renderPaymentsList() {
+    const listEl = document.getElementById('pdv-payments-list');
+    if (!listEl) return;
+
+    if (this.payments.length === 0) {
+      listEl.innerHTML = `<p class="text-xs text-slate-500 italic py-1 text-center">Nenhum pagamento adicionado ainda.</p>`;
+      return;
+    }
+
+    listEl.innerHTML = this.payments.map((p, idx) => `
+      <div class="flex items-center justify-between bg-slate-900 border border-slate-800 rounded-lg px-3 py-1.5 text-xs">
+        <span class="font-semibold text-slate-200">${this.getPaymentLabel(p.forma)}</span>
+        <div class="flex items-center gap-3">
+          <span class="font-mono font-bold text-emerald-400">R$ ${p.valor.toFixed(2)}</span>
+          <button type="button" onclick="pdvModule.removePayment(${idx})" class="text-rose-400 hover:text-rose-300 transition-colors p-1 cursor-pointer" title="Remover pagamento">
+            <i class="fa-solid fa-xmark text-sm"></i>
+          </button>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  updatePaymentTotals() {
+    const subtotal = this.cart.reduce((sum, item) => sum + item.total, 0);
+    const totalVenda = Math.max(0, subtotal - this.discount);
+    const totalPago = this.payments.reduce((acc, p) => acc + p.valor, 0);
+    const saldoRestante = Math.max(0, totalVenda - totalPago);
+
+    const totalModalEl = document.getElementById('pdv-modal-total');
+    const addedTotalEl = document.getElementById('pdv-modal-added-total');
+    const remainingEl = document.getElementById('pdv-modal-remaining');
+
+    if (totalModalEl) totalModalEl.textContent = totalVenda.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    if (addedTotalEl) addedTotalEl.textContent = totalPago.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    if (remainingEl) remainingEl.textContent = saldoRestante.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+    const input = document.getElementById('pdv-amount-received');
+    if (input) {
+      input.value = saldoRestante > 0 ? saldoRestante.toFixed(2) : '';
+    }
+
+    const totalDinheiro = this.payments
+      .filter(p => String(p.forma).toUpperCase().includes('DINHEIRO'))
+      .reduce((acc, p) => acc + p.valor, 0);
+    const totalOutros = this.payments
+      .filter(p => !String(p.forma).toUpperCase().includes('DINHEIRO'))
+      .reduce((acc, p) => acc + p.valor, 0);
+
+    const troco = Math.max(0, (totalDinheiro + totalOutros) - totalVenda);
+
+    const changeContainer = document.getElementById('pdv-change-container');
+    const changeAmountEl = document.getElementById('pdv-change-amount');
+
+    if (troco > 0) {
+      if (changeContainer) changeContainer.classList.remove('hidden');
+      if (changeAmountEl) changeAmountEl.textContent = troco.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    } else {
+      if (changeContainer) changeContainer.classList.add('hidden');
+    }
+
+    const btnSubmit = document.getElementById('pdv-btn-submit-sale');
+    if (btnSubmit) {
+      btnSubmit.disabled = (totalPago < totalVenda - 0.001);
+    }
+
+    this.renderPaymentsList();
+  }
+
   openPaymentModal() {
     if (!this.checkRegisterStatus()) {
       showToast('O caixa está fechado! Abra o caixa para finalizar vendas.', 'error');
@@ -453,25 +622,24 @@ class PDVModule {
     }
 
     const modal = document.getElementById('modal-payment');
-    const totalModalEl = document.getElementById('pdv-modal-total');
-    const amountReceivedInput = document.getElementById('pdv-amount-received');
-
     const subtotal = this.cart.reduce((sum, item) => sum + item.total, 0);
     const finalTotal = Math.max(0, subtotal - this.discount);
 
-    if (totalModalEl) totalModalEl.textContent = finalTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-    if (amountReceivedInput) {
-      amountReceivedInput.value = finalTotal.toFixed(2);
-    }
+    this.payments = [];
+    this.selectedPaymentMethod = 'DINHEIRO';
 
-    this.toggleCashSection();
-    this.calculateChange();
+    const obsInput = document.getElementById('pdv-sale-obs');
+    if (obsInput) obsInput.value = '';
+
+    this.payments.push({
+      forma: 'DINHEIRO',
+      valor: finalTotal
+    });
+
+    this.selectPaymentMethod('DINHEIRO');
+    this.updatePaymentTotals();
 
     if (modal) modal.classList.remove('hidden');
-    if (amountReceivedInput && this.selectedPaymentMethod === 'DINHEIRO') {
-      amountReceivedInput.focus();
-      amountReceivedInput.select();
-    }
   }
 
   closePaymentModal() {
@@ -480,60 +648,29 @@ class PDVModule {
     this.focusScanInput();
   }
 
-  toggleCashSection() {
-    const cashSection = document.getElementById('pdv-cash-section');
-    if (!cashSection) return;
-
-    if (this.selectedPaymentMethod === 'DINHEIRO') {
-      cashSection.classList.remove('hidden');
-      this.calculateChange();
-    } else {
-      cashSection.classList.add('hidden');
-    }
-  }
-
-  calculateChange() {
-    const subtotal = this.cart.reduce((sum, item) => sum + item.total, 0);
-    const finalTotal = Math.max(0, subtotal - this.discount);
-    const amountReceived = parseFloat(document.getElementById('pdv-amount-received').value) || 0;
-    const changeEl = document.getElementById('pdv-change-amount');
-    const statusMsgEl = document.getElementById('pdv-cash-status');
-
-    const change = amountReceived - finalTotal;
-
-    if (changeEl) {
-      changeEl.textContent = Math.max(0, change).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-    }
-
-    if (statusMsgEl) {
-      if (change < 0 && this.selectedPaymentMethod === 'DINHEIRO') {
-        statusMsgEl.textContent = `Faltam R$ ${Math.abs(change).toFixed(2)}`;
-        statusMsgEl.className = 'text-xs font-semibold text-rose-400 mt-1';
-      } else {
-        statusMsgEl.textContent = 'Valor recebido suficiente.';
-        statusMsgEl.className = 'text-xs font-semibold text-emerald-400 mt-1';
-      }
-    }
-  }
-
-  /**
-   * Executa a função estrita finalizarVenda(dadosVenda)
-   */
   async submitSale() {
     if (this.cart.length === 0) return;
 
     const subtotal = this.cart.reduce((sum, item) => sum + item.total, 0);
     const finalTotal = Math.max(0, subtotal - this.discount);
-    const amountReceived = this.selectedPaymentMethod === 'DINHEIRO'
-      ? (parseFloat(document.getElementById('pdv-amount-received').value) || finalTotal)
-      : finalTotal;
+    const totalPago = this.payments.reduce((acc, p) => acc + p.valor, 0);
 
-    if (this.selectedPaymentMethod === 'DINHEIRO' && amountReceived < finalTotal) {
-      showToast('O valor recebido é menor que o total da venda!', 'error');
+    if (totalPago < finalTotal - 0.001) {
+      showToast('O total pago é menor que o valor da venda!', 'error');
       return;
     }
 
-    const changeAmount = Math.max(0, amountReceived - finalTotal);
+    const troco = Math.max(0, totalPago - finalTotal);
+    const obsVal = document.getElementById('pdv-sale-obs')?.value.trim() || '';
+
+    const pagamentosFormatados = this.payments.map(p => ({
+      forma: this.getPaymentLabel(p.forma),
+      valor: p.valor
+    }));
+
+    const formaPagamentoStr = pagamentosFormatados.length === 1
+      ? pagamentosFormatados[0].forma
+      : 'Múltiplo (' + pagamentosFormatados.map(p => p.forma).join(', ') + ')';
 
     const dadosVenda = {
       itens: this.cart.map(item => ({
@@ -547,33 +684,32 @@ class PDVModule {
       subtotal,
       desconto: this.discount,
       total: finalTotal,
-      formaPagamento: this.selectedPaymentMethod,
-      valorRecebido: amountReceived,
-      troco: changeAmount
+      formaPagamento: formaPagamentoStr,
+      pagamentos: pagamentosFormatados,
+      observacao: obsVal,
+      valorRecebido: totalPago,
+      troco: troco
     };
 
     try {
-      // 1. Chama a função de transação de venda e baixa de estoque
       const completedSale = await dbManager.finalizarVenda(dadosVenda);
       this.lastCompletedSale = completedSale;
 
       showToast('Venda finalizada com sucesso! Baixa no estoque efetuada.', 'success');
 
-      // 2. Limpa o carrinho
       this.cart = [];
       this.discount = 0;
+      this.payments = [];
       const discountInput = document.getElementById('pdv-discount-input');
       if (discountInput) discountInput.value = 0;
       this.renderCart();
       this.closePaymentModal();
 
-      // 3. Atualiza a lista de estoque e atualiza os relatórios
       await dbManager.listarProdutos();
       if (window.reportsModule) {
         await window.reportsModule.carregarRelatorioVendasUI();
       }
 
-      // Exibe recibo na tela
       this.openReceiptModal(completedSale);
     } catch (err) {
       console.error('Erro ao finalizar venda:', err);
@@ -586,13 +722,6 @@ class PDVModule {
     const container = document.getElementById('receipt-content');
 
     if (!modal || !container || !sale) return;
-
-    const methodLabels = {
-      'DINHEIRO': 'Dinheiro',
-      'PIX': 'PIX',
-      'CREDITO': 'Cartão de Crédito',
-      'DEBITO': 'Cartão de Débito'
-    };
 
     const dataHoraStr = sale.data ? new Date(sale.data).toLocaleString('pt-BR') : '';
 
@@ -614,7 +743,19 @@ class PDVModule {
       <div class="text-xs text-slate-700 space-y-1 mb-3">
         <p><strong>Cód. Venda:</strong> ${sale.code || ''}</p>
         <p><strong>Data/Hora:</strong> ${dataHoraStr}</p>
-        <p><strong>Forma Pagto:</strong> ${methodLabels[sale.formaPagamento] || sale.formaPagamento}</p>
+        ${Array.isArray(sale.pagamentos) && sale.pagamentos.length > 0 ? `
+          <div>
+            <strong>Pagamento:</strong>
+            <ul class="pl-2 space-y-0.5 mt-0.5">
+              ${sale.pagamentos.map(p => `<li>• ${p.forma}: R$ ${Number(p.valor).toFixed(2)}</li>`).join('')}
+            </ul>
+          </div>
+        ` : `
+          <p><strong>Forma Pagto:</strong> ${sale.formaPagamento}</p>
+        `}
+        ${sale.observacao ? `
+          <p class="pt-1 text-slate-900 font-semibold border-t border-dashed border-slate-400 mt-1"><strong>Obs:</strong> ${sale.observacao}</p>
+        ` : ''}
       </div>
 
       <table class="w-full text-xs text-left mb-3">
@@ -626,7 +767,7 @@ class PDVModule {
           </tr>
         </thead>
         <tbody>
-          ${sale.itens.map(item => `
+          ${(sale.itens || []).map(item => `
             <tr>
               <td class="py-1">
                 <span class="font-semibold">${item.qty}x</span> ${item.name}

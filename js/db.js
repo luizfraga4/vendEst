@@ -15,7 +15,7 @@ class DBManager {
    */
   async init() {
     return new Promise((resolve, reject) => {
-      const request = indexedDB.open(this.dbName);
+      const request = indexedDB.open(this.dbName, 3);
 
       request.onerror = (event) => {
         console.error('❌ Erro ao abrir IndexedDB:', event.target.error);
@@ -37,6 +37,16 @@ class DBManager {
         if (!db.objectStoreNames.contains('vendas')) {
           const salesStore = db.createObjectStore('vendas', { keyPath: 'id', autoIncrement: true });
           salesStore.createIndex('data', 'data', { unique: false });
+        }
+        if (!db.objectStoreNames.contains('comandas')) {
+          db.createObjectStore('comandas', { keyPath: 'id', autoIncrement: true });
+        }
+        if (!db.objectStoreNames.contains('sangrias')) {
+          db.createObjectStore('sangrias', { keyPath: 'id', autoIncrement: true });
+        }
+        if (!db.objectStoreNames.contains('compras')) {
+          const comprasStore = db.createObjectStore('compras', { keyPath: 'id', autoIncrement: true });
+          comprasStore.createIndex('data', 'data', { unique: false });
         }
       };
     });
@@ -184,6 +194,8 @@ class DBManager {
         desconto: parseFloat(dadosVenda.desconto || 0),
         total: Number(dadosVenda.total),
         formaPagamento: String(dadosVenda.formaPagamento),
+        pagamentos: Array.isArray(dadosVenda.pagamentos) ? dadosVenda.pagamentos : [{ forma: String(dadosVenda.formaPagamento), valor: Number(dadosVenda.total) }],
+        observacao: String(dadosVenda.observacao || ''),
         valorRecebido: parseFloat(dadosVenda.valorRecebido || dadosVenda.total),
         troco: parseFloat(dadosVenda.troco || 0)
       };
@@ -258,18 +270,241 @@ class DBManager {
   }
 
   /* ==========================================================================
+     MÉTODOS DE COMANDAS E SANGRIAS
+     ========================================================================== */
+
+  async salvarComanda(comanda) {
+    return new Promise((resolve, reject) => {
+      if (!this.db) return reject(new Error('DB não inicializado.'));
+      const tx = this.db.transaction('comandas', 'readwrite');
+      const store = tx.objectStore('comandas');
+      
+      const request = store.put({
+        ...comanda,
+        updatedAt: new Date().toISOString()
+      });
+
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = (e) => reject(e.target.error);
+    });
+  }
+
+  async listarComandas() {
+    return new Promise((resolve, reject) => {
+      if (!this.db) return resolve([]);
+      const tx = this.db.transaction('comandas', 'readonly');
+      const store = tx.objectStore('comandas');
+      const request = store.getAll();
+
+      request.onsuccess = () => {
+        const comandas = request.result || [];
+        resolve(comandas.filter(c => c.status !== 'fechada'));
+      };
+      request.onerror = (e) => reject(e.target.error);
+    });
+  }
+
+  async excluirComanda(id) {
+    return new Promise((resolve, reject) => {
+      const tx = this.db.transaction('comandas', 'readwrite');
+      const store = tx.objectStore('comandas');
+      const request = store.delete(Number(id));
+
+      request.onsuccess = () => resolve(true);
+      request.onerror = (e) => reject(e.target.error);
+    });
+  }
+
+  async salvarSangria(sangria) {
+    return new Promise((resolve, reject) => {
+      if (!this.db) return reject(new Error('DB não inicializado.'));
+      const tx = this.db.transaction('sangrias', 'readwrite');
+      const store = tx.objectStore('sangrias');
+      
+      const request = store.put({
+        ...sangria,
+        data: sangria.data || new Date().toISOString(),
+        timestamp: Date.now()
+      });
+
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = (e) => reject(e.target.error);
+    });
+  }
+
+  async listarSangriasPorTurno(aberturaTs) {
+    return new Promise((resolve, reject) => {
+      if (!this.db) return resolve([]);
+      const tx = this.db.transaction('sangrias', 'readonly');
+      const store = tx.objectStore('sangrias');
+      const request = store.getAll();
+
+      request.onsuccess = () => {
+        const sangrias = request.result || [];
+        resolve(sangrias.filter(s => s.timestamp >= aberturaTs));
+      };
+      request.onerror = (e) => reject(e.target.error);
+    });
+  }
+
+  async listarSangriasPorPeriodo(filtroInicio = null, filtroFim = null) {
+    return new Promise((resolve, reject) => {
+      if (!this.db || !this.db.objectStoreNames.contains('sangrias')) return resolve([]);
+      const tx = this.db.transaction('sangrias', 'readonly');
+      const store = tx.objectStore('sangrias');
+      const request = store.getAll();
+
+      request.onsuccess = () => {
+        let sangrias = request.result || [];
+        if (filtroInicio) {
+          const inicioStr = String(filtroInicio).substring(0, 10);
+          sangrias = sangrias.filter(s => {
+            const dateStr = s.timestamp ? new Date(s.timestamp).toISOString().substring(0, 10) : '';
+            return dateStr >= inicioStr;
+          });
+        }
+        if (filtroFim) {
+          const fimStr = String(filtroFim).substring(0, 10);
+          sangrias = sangrias.filter(s => {
+            const dateStr = s.timestamp ? new Date(s.timestamp).toISOString().substring(0, 10) : '';
+            return dateStr <= fimStr;
+          });
+        }
+        resolve(sangrias);
+      };
+      request.onerror = (e) => reject(e.target.error);
+    });
+  }
+
+  /* ==========================================================================
+     MÉTODOS DE COMPRAS / DESPESAS
+     ========================================================================== */
+
+  async salvarCompra(compra) {
+    return new Promise((resolve, reject) => {
+      if (!this.db || !this.db.objectStoreNames.contains('compras')) {
+        return reject(new Error('Banco de dados não está acessível.'));
+      }
+
+      const tx = this.db.transaction('compras', 'readwrite');
+      const store = tx.objectStore('compras');
+
+      const now = new Date();
+      const record = {
+        data: compra.data || now.toISOString(),
+        timestamp: compra.timestamp || Date.now(),
+        descricao: String(compra.descricao || compra.fornecedor || '').trim(),
+        fornecedor: String(compra.fornecedor || compra.descricao || '').trim(),
+        categoria: String(compra.categoria || 'Outros').trim(),
+        formaPagamento: String(compra.formaPagamento || 'Dinheiro').trim(),
+        valor: parseFloat(compra.valor) || 0,
+        criadoPor: compra.criadoPor || (window.authModule ? window.authModule.currentUser : 'Admin')
+      };
+
+      if (compra.id) {
+        record.id = Number(compra.id);
+        const req = store.put(record);
+        req.onsuccess = () => resolve(record);
+        req.onerror = (e) => reject(e.target.error);
+      } else {
+        const req = store.add(record);
+        req.onsuccess = (e) => {
+          record.id = e.target.result;
+          resolve(record);
+        };
+        req.onerror = (e) => reject(e.target.error);
+      }
+    });
+  }
+
+  async listarCompras(filtroInicio = null, filtroFim = null) {
+    return new Promise((resolve, reject) => {
+      if (!this.db || !this.db.objectStoreNames.contains('compras')) return resolve([]);
+
+      const tx = this.db.transaction('compras', 'readonly');
+      const store = tx.objectStore('compras');
+      const request = store.getAll();
+
+      request.onsuccess = () => {
+        let compras = request.result || [];
+        compras.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+
+        if (filtroInicio) {
+          const inicioStr = String(filtroInicio).substring(0, 10);
+          compras = compras.filter(c => {
+            const dateStr = c.data ? String(c.data).substring(0, 10) : '';
+            return dateStr >= inicioStr;
+          });
+        }
+
+        if (filtroFim) {
+          const fimStr = String(filtroFim).substring(0, 10);
+          compras = compras.filter(c => {
+            const dateStr = c.data ? String(c.data).substring(0, 10) : '';
+            return dateStr <= fimStr;
+          });
+        }
+
+        resolve(compras);
+      };
+
+      request.onerror = (e) => reject(e.target.error);
+    });
+  }
+
+  async excluirCompra(id) {
+    return new Promise((resolve, reject) => {
+      if (!this.db || !this.db.objectStoreNames.contains('compras')) return reject(new Error('Banco de dados não acessível.'));
+      const tx = this.db.transaction('compras', 'readwrite');
+      const store = tx.objectStore('compras');
+      const req = store.delete(Number(id));
+
+      req.onsuccess = () => resolve(true);
+      req.onerror = (e) => reject(e.target.error);
+    });
+  }
+
+  /* ==========================================================================
      MÉTODOS DE BACKUP
      ========================================================================== */
 
   async exportarDados() {
     const produtos = await this.listarProdutos();
     const vendas = await this.carregarRelatorioVendas();
+    
+    const comandas = await new Promise((resolve) => {
+      if (!this.db.objectStoreNames.contains('comandas')) return resolve([]);
+      const tx = this.db.transaction('comandas', 'readonly');
+      const req = tx.objectStore('comandas').getAll();
+      req.onsuccess = () => resolve(req.result || []);
+      req.onerror = () => resolve([]);
+    });
+    
+    const sangrias = await new Promise((resolve) => {
+      if (!this.db.objectStoreNames.contains('sangrias')) return resolve([]);
+      const tx = this.db.transaction('sangrias', 'readonly');
+      const req = tx.objectStore('sangrias').getAll();
+      req.onsuccess = () => resolve(req.result || []);
+      req.onerror = () => resolve([]);
+    });
+
+    const compras = await new Promise((resolve) => {
+      if (!this.db.objectStoreNames.contains('compras')) return resolve([]);
+      const tx = this.db.transaction('compras', 'readonly');
+      const req = tx.objectStore('compras').getAll();
+      req.onsuccess = () => resolve(req.result || []);
+      req.onerror = () => resolve([]);
+    });
+
     return {
-      version: 1,
+      version: 3,
       dbName: 'PDV_Estoque_DB',
       exportedAt: new Date().toISOString(),
       produtos,
-      vendas
+      vendas,
+      comandas,
+      sangrias,
+      compras
     };
   }
 
@@ -278,17 +513,31 @@ class DBManager {
       throw new Error('Arquivo de backup inválido.');
     }
 
-    const tx = this.db.transaction(['produtos', 'vendas'], 'readwrite');
+    const availableStores = ['produtos', 'vendas', 'comandas', 'sangrias'];
+    if (this.db.objectStoreNames.contains('compras')) {
+      availableStores.push('compras');
+    }
+
+    const tx = this.db.transaction(availableStores, 'readwrite');
     const productStore = tx.objectStore('produtos');
     const salesStore = tx.objectStore('vendas');
+    const comandasStore = tx.objectStore('comandas');
+    const sangriasStore = tx.objectStore('sangrias');
+    const comprasStore = this.db.objectStoreNames.contains('compras') ? tx.objectStore('compras') : null;
 
     if (replaceAll) {
       productStore.clear();
       salesStore.clear();
+      comandasStore.clear();
+      sangriasStore.clear();
+      if (comprasStore) comprasStore.clear();
     }
 
     for (const p of data.produtos) {
       delete p.id;
+      if (!p.categoria && !p.category) {
+        p.categoria = 'Geral';
+      }
       productStore.add(p);
     }
 
@@ -296,6 +545,27 @@ class DBManager {
       for (const v of data.vendas) {
         delete v.id;
         salesStore.add(v);
+      }
+    }
+
+    if (Array.isArray(data.comandas)) {
+      for (const c of data.comandas) {
+        delete c.id;
+        comandasStore.add(c);
+      }
+    }
+
+    if (Array.isArray(data.sangrias)) {
+      for (const s of data.sangrias) {
+        delete s.id;
+        sangriasStore.add(s);
+      }
+    }
+
+    if (comprasStore && Array.isArray(data.compras)) {
+      for (const comp of data.compras) {
+        delete comp.id;
+        comprasStore.add(comp);
       }
     }
 
