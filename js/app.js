@@ -144,6 +144,83 @@ const appModule = {
     }
   },
 
+  // Gestão de Categorias
+  categorias: [],
+
+  loadCategories: () => {
+    const saved = localStorage.getItem('vendest_categorias');
+    if (saved) {
+      try {
+        appModule.categorias = JSON.parse(saved);
+      } catch(e) {}
+    }
+    
+    if (!appModule.categorias || appModule.categorias.length === 0) {
+      appModule.categorias = ['Bebidas', 'Destilados', 'Cervejas', 'Petiscos', 'Gelo/Carvão'];
+      appModule.saveCategories();
+    }
+    appModule.renderCategoriesList();
+  },
+
+  saveCategories: () => {
+    localStorage.setItem('vendest_categorias', JSON.stringify(appModule.categorias));
+  },
+
+  addCategory: (catName = null) => {
+    const input = document.getElementById('config-new-category');
+    const name = catName || (input ? input.value.trim() : '');
+    
+    if (!name) return false;
+    
+    if (appModule.categorias.includes(name)) {
+      if (!catName) showToast('Categoria já existe.', 'warning');
+      return true;
+    }
+
+    appModule.categorias.push(name);
+    appModule.categorias.sort();
+    appModule.saveCategories();
+    appModule.renderCategoriesList();
+    
+    if (input) input.value = '';
+    if (!catName) showToast('Categoria adicionada!', 'success');
+    
+    // Atualizar selects se estiverem visíveis
+    if (window.stockModule && document.getElementById('product-category')) {
+      window.stockModule.populateCategorySelect(name);
+    }
+    
+    return true;
+  },
+
+  deleteCategory: (name) => {
+    if (confirm(`Deseja excluir a categoria "${name}"? Produtos existentes manterão o nome da categoria, mas ela não aparecerá na lista padrão.`)) {
+      appModule.categorias = appModule.categorias.filter(c => c !== name);
+      appModule.saveCategories();
+      appModule.renderCategoriesList();
+      showToast('Categoria removida.', 'info');
+    }
+  },
+
+  renderCategoriesList: () => {
+    const listEl = document.getElementById('config-categories-list');
+    if (!listEl) return;
+
+    if (appModule.categorias.length === 0) {
+      listEl.innerHTML = `<li class="p-4 text-center text-sm text-slate-400">Nenhuma categoria cadastrada.</li>`;
+      return;
+    }
+
+    listEl.innerHTML = appModule.categorias.map(cat => `
+      <li class="flex items-center justify-between p-3 hover:bg-slate-800 transition-colors">
+        <span class="text-sm font-semibold text-slate-200">${cat}</span>
+        <button onclick="appModule.deleteCategory('${cat}')" class="text-rose-400 hover:text-rose-300 p-1.5 rounded hover:bg-rose-500/10 transition-colors" title="Remover">
+          <i class="fa-solid fa-trash-can"></i>
+        </button>
+      </li>
+    `).join('');
+  },
+
   switchTab: (tabId) => {
     showTab(tabId);
   }
@@ -158,9 +235,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     await dbManager.init();
 
     // 2. Inicializar Módulos
-    if (window.appModule) window.appModule.loadConfig();
+    if (window.appModule) {
+      window.appModule.loadConfig();
+      window.appModule.loadCategories();
+    }
+    if (window.authModule) window.authModule.init();
     if (window.stockModule) await window.stockModule.init();
     if (window.pdvModule) await window.pdvModule.init();
+    if (window.comandasModule) await window.comandasModule.init();
     if (window.reportsModule) await window.reportsModule.init();
 
     // 3. Carregar e exibir a tabela de estoque e o relatório de vendas no arranque

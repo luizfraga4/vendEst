@@ -92,10 +92,12 @@ class BackupModule {
           return;
         }
 
+        const comprasCount = Array.isArray(parsed.compras) ? parsed.compras.length : 0;
         const replaceAll = confirm(
           `Deseja SUBSTITUIR totalmente os dados atuais pelos dados do backup?\n\n` +
           `• Produtos no backup: ${produtos.length}\n` +
-          `• Vendas no backup: ${(parsed.vendas || parsed.sales || []).length}\n\n` +
+          `• Vendas no backup: ${(parsed.vendas || parsed.sales || []).length}\n` +
+          `• Compras/Despesas no backup: ${comprasCount}\n\n` +
           `Clique em OK para Substituir Tudo ou Cancelar para Mesclar.`
         );
 
