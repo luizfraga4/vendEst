@@ -21,11 +21,14 @@ class ReportsModule {
   }
 
   bindEvents() {
-    const todayStr = new Date().toISOString().substring(0, 10);
+    const pad = (n) => String(n).padStart(2, '0');
+    const now = new Date();
+    const todayDateStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+
     const startDateInput = document.getElementById('report-start-date');
     const endDateInput = document.getElementById('report-end-date');
-    if (startDateInput) startDateInput.value = todayStr;
-    if (endDateInput) endDateInput.value = todayStr;
+    if (startDateInput && !startDateInput.value) startDateInput.value = `${todayDateStr}T00:00`;
+    if (endDateInput && !endDateInput.value) endDateInput.value = `${todayDateStr}T23:59`;
   }
 
   switchSubTab(tabName) {
@@ -114,65 +117,82 @@ class ReportsModule {
     this.carregarRelatorioVendasUI();
   }
 
-  getDateRange() {
+  parseInputDateTime(valStr, isEnd = false) {
+    if (!valStr || typeof valStr !== 'string') return null;
+    valStr = valStr.trim();
+    if (!valStr) return null;
+
+    if (/^\d{4}-\d{2}-\d{2}$/.test(valStr)) {
+      const timePart = isEnd ? 'T23:59:59.999' : 'T00:00:00.000';
+      const dt = new Date(`${valStr}${timePart}`);
+      return isNaN(dt.getTime()) ? null : dt.getTime();
+    }
+
+    if (valStr.includes('T')) {
+      const parts = valStr.split('T');
+      const timeParts = parts[1] ? parts[1].split(':') : [];
+      if (timeParts.length < 2) {
+        const timePart = isEnd ? 'T23:59:59.999' : 'T00:00:00.000';
+        const dt = new Date(`${parts[0]}${timePart}`);
+        return isNaN(dt.getTime()) ? null : dt.getTime();
+      }
+
+      const sec = isEnd ? ':59.999' : ':00.000';
+      const dt = new Date(`${valStr}${sec}`);
+      return isNaN(dt.getTime()) ? null : dt.getTime();
+    }
+
+    const dt = new Date(valStr);
+    return isNaN(dt.getTime()) ? null : dt.getTime();
+  }
+
+  getDateTimeRange() {
     const now = new Date();
-    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 
     if (this.currentPeriod === 'TODAY') {
-      return { inicio: todayStr, fim: todayStr };
+      const start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0).getTime();
+      const end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999).getTime();
+      return { startTimestamp: start, endTimestamp: end };
     } else if (this.currentPeriod === 'WEEK') {
-      const past7 = new Date(now.getTime() - 6 * 24 * 60 * 60 * 1000);
-      const past7Str = `${past7.getFullYear()}-${String(past7.getMonth() + 1).padStart(2, '0')}-${String(past7.getDate()).padStart(2, '0')}`;
-      return { inicio: past7Str, fim: todayStr };
+      const past7 = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6, 0, 0, 0, 0).getTime();
+      const end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999).getTime();
+      return { startTimestamp: past7, endTimestamp: end };
     } else if (this.currentPeriod === 'MONTH') {
-      const monthStartStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
-      return { inicio: monthStartStr, fim: todayStr };
+      const startMonth = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0).getTime();
+      const end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999).getTime();
+      return { startTimestamp: startMonth, endTimestamp: end };
     } else if (this.currentPeriod === 'CUSTOM') {
       const startEl = document.getElementById('report-start-date');
       const endEl = document.getElementById('report-end-date');
-      const inicio = startEl && startEl.value ? startEl.value : todayStr;
-      const fim = endEl && endEl.value ? endEl.value : todayStr;
-      return { inicio, fim };
+
+      const startVal = startEl ? startEl.value : null;
+      const endVal = endEl ? endEl.value : null;
+
+      let startTimestamp = this.parseInputDateTime(startVal, false);
+      let endTimestamp = this.parseInputDateTime(endVal, true);
+
+      if (!startTimestamp) {
+        startTimestamp = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0).getTime();
+      }
+      if (!endTimestamp) {
+        endTimestamp = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999).getTime();
+      }
+
+      return { startTimestamp, endTimestamp };
     }
 
-    return { inicio: null, fim: null };
+    return { startTimestamp: null, endTimestamp: null };
   }
 
   async carregarRelatorioVendasUI() {
     try {
       if (!window.dbManager || !window.dbManager.db) return;
 
-      const { inicio, fim } = this.getDateRange();
+      const { startTimestamp, endTimestamp } = this.getDateTimeRange();
 
-      const dbVendas = await new Promise((resolve) => {
-        const tx = window.dbManager.db.transaction('vendas', 'readonly');
-        const store = tx.objectStore('vendas');
-        const request = store.getAll();
-
-        request.onsuccess = () => {
-          let vendas = request.result || [];
-          vendas.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
-
-          if (inicio) {
-            vendas = vendas.filter(v => {
-              const dateStr = v.data ? String(v.data).substring(0, 10) : '';
-              return dateStr >= inicio;
-            });
-          }
-          if (fim) {
-            vendas = vendas.filter(v => {
-              const dateStr = v.data ? String(v.data).substring(0, 10) : '';
-              return dateStr <= fim;
-            });
-          }
-          resolve(vendas);
-        };
-        request.onerror = () => resolve([]);
-      });
-
-      this.vendas = dbVendas;
-      this.compras = await window.dbManager.listarCompras(inicio, fim);
-      this.sangrias = await window.dbManager.listarSangriasPorPeriodo(inicio, fim);
+      this.vendas = await window.dbManager.carregarRelatorioVendas(startTimestamp, endTimestamp);
+      this.compras = await window.dbManager.listarCompras(startTimestamp, endTimestamp);
+      this.sangrias = await window.dbManager.listarSangriasPorPeriodo(startTimestamp, endTimestamp);
 
       this.atualizarDRE();
       
@@ -210,11 +230,47 @@ class ReportsModule {
       return sum + v.itens.reduce((iSum, item) => iSum + (parseInt(item.qty || item.quantidade || 0, 10)), 0);
     }, 0);
 
+    let totalDinheiro = 0;
+    let totalPix = 0;
+    let totalCredito = 0;
+    let totalDebito = 0;
+
+    this.vendas.forEach(v => {
+      if (Array.isArray(v.pagamentos) && v.pagamentos.length > 0) {
+        v.pagamentos.forEach(p => {
+          const val = Number(p.valor || 0);
+          const forma = String(p.forma || '').toUpperCase();
+          if (forma.includes('DINHEIRO')) totalDinheiro += val;
+          else if (forma.includes('PIX')) totalPix += val;
+          else if (forma.includes('CREDITO') || forma.includes('CRÉDITO')) totalCredito += val;
+          else if (forma.includes('DEBITO') || forma.includes('DÉBITO')) totalDebito += val;
+          else totalDinheiro += val;
+        });
+      } else {
+        const val = Number(v.total || 0);
+        const forma = String(v.formaPagamento || '').toUpperCase();
+        if (forma.includes('DINHEIRO')) totalDinheiro += val;
+        else if (forma.includes('PIX')) totalPix += val;
+        else if (forma.includes('CREDITO') || forma.includes('CRÉDITO')) totalCredito += val;
+        else if (forma.includes('DEBITO') || forma.includes('DÉBITO')) totalDebito += val;
+        else totalDinheiro += val;
+      }
+    });
+
     if (totalRevenueEl) totalRevenueEl.textContent = faturamentoBruto.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
     if (totalExpensesEl) totalExpensesEl.textContent = totalDespesas.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
     if (totalOrdersEl) totalOrdersEl.textContent = qtdVendas;
     if (averageTicketEl) averageTicketEl.textContent = ticketMedio.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
     if (totalItemsSoldEl) totalItemsSoldEl.textContent = totalItensVendidos;
+
+    const payDinheiroEl = document.getElementById('report-pay-dinheiro');
+    const payPixEl = document.getElementById('report-pay-pix');
+    const payCreditoEl = document.getElementById('report-pay-credito');
+    const payDebitoEl = document.getElementById('report-pay-debito');
+    if (payDinheiroEl) payDinheiroEl.textContent = totalDinheiro.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    if (payPixEl) payPixEl.textContent = totalPix.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    if (payCreditoEl) payCreditoEl.textContent = totalCredito.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    if (payDebitoEl) payDebitoEl.textContent = totalDebito.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
     if (netResultEl) {
       netResultEl.textContent = resultadoLiquido.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });

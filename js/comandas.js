@@ -227,7 +227,23 @@ class ComandasModule {
       return this.removerItem(index);
     }
     this.currentComanda.itens[index].qty = qty;
-    this.currentComanda.itens[index].total = qty * this.currentComanda.itens[index].price;
+    const price = typeof this.currentComanda.itens[index].price === 'number' ? this.currentComanda.itens[index].price : parseFloat(this.currentComanda.itens[index].price || 0);
+    this.currentComanda.itens[index].total = qty * price;
+    this.recalcularTotal();
+    await this.salvarComandaAtual();
+    this.renderComandaItens();
+  }
+
+  async alterarPrecoUnitario(index, newPrice) {
+    if (!this.currentComanda || !this.currentComanda.itens[index]) return;
+    const price = parseFloat(newPrice);
+    if (isNaN(price) || price < 0) {
+      showToast('Preço unitário inválido.', 'error');
+      this.renderComandaItens();
+      return;
+    }
+    this.currentComanda.itens[index].price = price;
+    this.currentComanda.itens[index].total = this.currentComanda.itens[index].qty * price;
     this.recalcularTotal();
     await this.salvarComandaAtual();
     this.renderComandaItens();
@@ -243,7 +259,7 @@ class ComandasModule {
 
   recalcularTotal() {
     if (!this.currentComanda) return;
-    this.currentComanda.total = this.currentComanda.itens.reduce((acc, item) => acc + item.total, 0);
+    this.currentComanda.total = this.currentComanda.itens.reduce((acc, item) => acc + (Number(item.total) || 0), 0);
   }
 
   async salvarComandaAtual() {
@@ -263,27 +279,38 @@ class ComandasModule {
     if (!tbody || !this.currentComanda) return;
 
     if (this.currentComanda.itens.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="4" class="p-4 text-center text-slate-400">Nenhum item lançado.</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="5" class="p-4 text-center text-slate-400">Nenhum item lançado.</td></tr>`;
       totalEl.textContent = 'R$ 0,00';
       return;
     }
 
-    tbody.innerHTML = this.currentComanda.itens.map((item, idx) => `
-      <tr class="border-b border-slate-700/50">
-        <td class="p-2 text-sm text-slate-200">${item.name}</td>
-        <td class="p-2 text-sm text-center">
-          <div class="flex items-center justify-center space-x-1">
-            <button onclick="comandasModule.alterarQuantidade(${idx}, ${item.qty - 1})" class="w-6 h-6 rounded bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 font-bold text-xs flex items-center justify-center cursor-pointer transition-colors" title="Diminuir">-</button>
-            <input type="number" value="${item.qty}" min="1" onchange="comandasModule.alterarQuantidade(${idx}, this.value)" class="w-12 text-center bg-slate-950 border border-slate-700 rounded px-1 py-0.5 text-xs text-slate-100 font-mono font-semibold focus:outline-none focus:border-indigo-500">
-            <button onclick="comandasModule.alterarQuantidade(${idx}, ${item.qty + 1})" class="w-6 h-6 rounded bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 font-bold text-xs flex items-center justify-center cursor-pointer transition-colors" title="Aumentar">+</button>
-          </div>
-        </td>
-        <td class="p-2 text-sm text-right text-emerald-400 font-semibold">R$ ${item.total.toFixed(2)}</td>
-        <td class="p-2 text-right">
-          <button onclick="comandasModule.removerItem(${idx})" class="text-rose-400 hover:text-rose-300 p-1 rounded hover:bg-rose-500/10 transition-colors" title="Remover item"><i class="fa-solid fa-trash-can"></i></button>
-        </td>
-      </tr>
-    `).join('');
+    tbody.innerHTML = this.currentComanda.itens.map((item, idx) => {
+      const priceVal = typeof item.price === 'number' ? item.price : parseFloat(item.price || 0);
+      const totalVal = typeof item.total === 'number' ? item.total : (priceVal * (item.qty || 1));
+
+      return `
+        <tr class="border-b border-slate-700/50 hover:bg-slate-800/40 transition-colors">
+          <td class="p-2 text-sm text-slate-200">${item.name}</td>
+          <td class="p-2 text-sm text-center">
+            <div class="flex items-center justify-center space-x-1">
+              <button onclick="comandasModule.alterarQuantidade(${idx}, ${item.qty - 1})" class="w-6 h-6 rounded bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 font-bold text-xs flex items-center justify-center cursor-pointer transition-colors" title="Diminuir">-</button>
+              <input type="number" value="${item.qty}" min="1" onchange="comandasModule.alterarQuantidade(${idx}, this.value)" class="w-12 text-center bg-slate-950 border border-slate-700 rounded px-1 py-0.5 text-xs text-slate-100 font-mono font-semibold focus:outline-none focus:border-indigo-500">
+              <button onclick="comandasModule.alterarQuantidade(${idx}, ${item.qty + 1})" class="w-6 h-6 rounded bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 font-bold text-xs flex items-center justify-center cursor-pointer transition-colors" title="Aumentar">+</button>
+            </div>
+          </td>
+          <td class="p-2 text-sm text-center">
+            <div class="flex items-center justify-center">
+              <span class="text-slate-400 text-xs mr-1">R$</span>
+              <input type="number" step="0.01" min="0" value="${priceVal.toFixed(2)}" onchange="comandasModule.alterarPrecoUnitario(${idx}, this.value)" class="w-20 text-center bg-slate-950 border border-slate-700 rounded px-1.5 py-0.5 text-xs text-slate-100 font-mono font-semibold focus:outline-none focus:border-indigo-500">
+            </div>
+          </td>
+          <td class="p-2 text-sm text-right text-emerald-400 font-semibold">R$ ${totalVal.toFixed(2)}</td>
+          <td class="p-2 text-right">
+            <button onclick="comandasModule.removerItem(${idx})" class="text-rose-400 hover:text-rose-300 p-1 rounded hover:bg-rose-500/10 transition-colors" title="Remover item"><i class="fa-solid fa-trash-can"></i></button>
+          </td>
+        </tr>
+      `;
+    }).join('');
 
     totalEl.textContent = `R$ ${this.currentComanda.total.toFixed(2)}`;
   }
@@ -295,27 +322,27 @@ class ComandasModule {
     }
 
     if (window.pdvModule) {
-      // Transfer items to PDV cart
+      // Transfer items to PDV cart preserving negotiated unit price
       this.currentComanda.itens.forEach(item => {
         const prod = this.catalog.find(p => p.id === item.id);
-        if (prod) {
-          const maxStock = parseInt(prod.quantidade || prod.estoque || 0, 10);
-          
-          const existingIndex = window.pdvModule.cart.findIndex(i => i.id === item.id);
-          if (existingIndex > -1) {
-            window.pdvModule.cart[existingIndex].qty += item.qty;
-            window.pdvModule.cart[existingIndex].total = window.pdvModule.cart[existingIndex].qty * window.pdvModule.cart[existingIndex].price;
-          } else {
-            window.pdvModule.cart.push({
-              id: item.id,
-              code: item.code,
-              name: item.name,
-              price: item.price,
-              qty: item.qty,
-              total: item.total,
-              maxStock: maxStock
-            });
-          }
+        const maxStock = prod ? parseInt(prod.quantidade || prod.estoque || 0, 10) : 9999;
+        const itemPrice = typeof item.price === 'number' ? item.price : parseFloat(item.price || 0);
+
+        const existingIndex = window.pdvModule.cart.findIndex(i => i.id === item.id);
+        if (existingIndex > -1) {
+          window.pdvModule.cart[existingIndex].qty += item.qty;
+          window.pdvModule.cart[existingIndex].price = itemPrice; // Preserva preço unitário negociado
+          window.pdvModule.cart[existingIndex].total = window.pdvModule.cart[existingIndex].qty * itemPrice;
+        } else {
+          window.pdvModule.cart.push({
+            id: item.id,
+            code: item.code || '',
+            name: item.name || '',
+            price: itemPrice, // Preserva preço unitário negociado
+            qty: item.qty,
+            total: item.qty * itemPrice,
+            maxStock: maxStock
+          });
         }
       });
       window.pdvModule.renderCart();

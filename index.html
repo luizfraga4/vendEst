@@ -347,6 +347,26 @@
           </div>
           <p id="report-total-revenue" class="text-2xl font-black text-emerald-400">R$ 0,00</p>
           <p class="text-[11px] text-slate-400 mt-1"><span id="report-total-orders">0</span> venda(s) registrada(s)</p>
+          
+          <!-- Breakdown por Forma de Pagamento -->
+          <div class="mt-3 pt-2.5 border-t border-slate-700/60 grid grid-cols-2 gap-x-2 gap-y-1 text-[11px]">
+            <div class="flex justify-between items-center text-slate-300">
+              <span class="flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>Dinheiro:</span>
+              <span id="report-pay-dinheiro" class="font-semibold text-slate-100">R$ 0,00</span>
+            </div>
+            <div class="flex justify-between items-center text-slate-300">
+              <span class="flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-cyan-400"></span>PIX:</span>
+              <span id="report-pay-pix" class="font-semibold text-slate-100">R$ 0,00</span>
+            </div>
+            <div class="flex justify-between items-center text-slate-300">
+              <span class="flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-purple-400"></span>Crédito:</span>
+              <span id="report-pay-credito" class="font-semibold text-slate-100">R$ 0,00</span>
+            </div>
+            <div class="flex justify-between items-center text-slate-300">
+              <span class="flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-blue-400"></span>Débito:</span>
+              <span id="report-pay-debito" class="font-semibold text-slate-100">R$ 0,00</span>
+            </div>
+          </div>
         </div>
 
         <!-- Card 2: Total Compras & Despesas -->
@@ -420,11 +440,11 @@
           </button>
         </div>
 
-        <!-- Inputs de Data Personalizada -->
+        <!-- Inputs de Data Personalizada (Com Data e Hora) -->
         <div id="report-custom-date-container" class="hidden flex flex-wrap items-center gap-2 w-full md:w-auto">
-          <input type="date" id="report-start-date" class="bg-slate-900 border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500">
+          <input type="datetime-local" id="report-start-date" class="bg-slate-900 border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500">
           <span class="text-slate-500 text-xs">até</span>
-          <input type="date" id="report-end-date" class="bg-slate-900 border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500">
+          <input type="datetime-local" id="report-end-date" class="bg-slate-900 border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500">
           <button id="btn-apply-custom-date" onclick="reportsModule.applyCustomDateFilter()" class="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold px-3.5 py-1.5 rounded-xl shadow transition-colors cursor-pointer">
             Filtrar
           </button>
@@ -754,7 +774,8 @@
             <tr class="text-xs text-slate-400 uppercase tracking-wider border-b border-slate-800">
               <th class="p-2">Item</th>
               <th class="p-2 text-center">Qtd</th>
-              <th class="p-2 text-right">Total</th>
+              <th class="p-2 text-center">Preço Un.</th>
+              <th class="p-2 text-right">Subtotal</th>
               <th class="p-2 text-right">Ação</th>
             </tr>
           </thead>
