@@ -239,10 +239,10 @@ class DBManager {
      ========================================================================== */
 
   /**
-   * carregarRelatorioVendas(filtroData = null):
-   * Busca vendas com store.getAll() e filtra com venda.data.startsWith(filtroData) se filtroData for fornecido
+   * carregarRelatorioVendas(filtroInicio = null, filtroFim = null):
+   * Busca vendas no store 'vendas' e aplica filtro de intervalo por timestamp/data
    */
-  async carregarRelatorioVendas(filtroData = null) {
+  async carregarRelatorioVendas(filtroInicio = null, filtroFim = null) {
     return new Promise((resolve, reject) => {
       if (!this.db) {
         resolve([]);
@@ -257,9 +257,28 @@ class DBManager {
         let vendas = request.result || [];
         vendas.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
 
-        if (filtroData && String(filtroData).trim() !== '') {
-          const cleanFilter = String(filtroData).trim();
-          vendas = vendas.filter(venda => venda.data && venda.data.startsWith(cleanFilter));
+        const parseBound = (val, isEnd = false) => {
+          if (val === null || val === undefined || val === '') return null;
+          if (typeof val === 'number') return val;
+          const str = String(val).trim();
+          if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
+            const dt = new Date(`${str}${isEnd ? 'T23:59:59.999' : 'T00:00:00.000'}`);
+            return isNaN(dt.getTime()) ? null : dt.getTime();
+          }
+          const dt = new Date(str);
+          return isNaN(dt.getTime()) ? null : dt.getTime();
+        };
+
+        const startTs = parseBound(filtroInicio, false);
+        const endTs = parseBound(filtroFim, true);
+
+        if (startTs !== null || endTs !== null) {
+          vendas = vendas.filter(venda => {
+            const vTs = venda.timestamp || (venda.data ? new Date(venda.data).getTime() : 0);
+            if (startTs !== null && vTs < startTs) return false;
+            if (endTs !== null && vTs > endTs) return false;
+            return true;
+          });
         }
 
         resolve(vendas);
@@ -356,20 +375,31 @@ class DBManager {
 
       request.onsuccess = () => {
         let sangrias = request.result || [];
-        if (filtroInicio) {
-          const inicioStr = String(filtroInicio).substring(0, 10);
+
+        const parseBound = (val, isEnd = false) => {
+          if (val === null || val === undefined || val === '') return null;
+          if (typeof val === 'number') return val;
+          const str = String(val).trim();
+          if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
+            const dt = new Date(`${str}${isEnd ? 'T23:59:59.999' : 'T00:00:00.000'}`);
+            return isNaN(dt.getTime()) ? null : dt.getTime();
+          }
+          const dt = new Date(str);
+          return isNaN(dt.getTime()) ? null : dt.getTime();
+        };
+
+        const startTs = parseBound(filtroInicio, false);
+        const endTs = parseBound(filtroFim, true);
+
+        if (startTs !== null || endTs !== null) {
           sangrias = sangrias.filter(s => {
-            const dateStr = s.timestamp ? new Date(s.timestamp).toISOString().substring(0, 10) : '';
-            return dateStr >= inicioStr;
+            const sTs = s.timestamp || (s.data ? new Date(s.data).getTime() : 0);
+            if (startTs !== null && sTs < startTs) return false;
+            if (endTs !== null && sTs > endTs) return false;
+            return true;
           });
         }
-        if (filtroFim) {
-          const fimStr = String(filtroFim).substring(0, 10);
-          sangrias = sangrias.filter(s => {
-            const dateStr = s.timestamp ? new Date(s.timestamp).toISOString().substring(0, 10) : '';
-            return dateStr <= fimStr;
-          });
-        }
+
         resolve(sangrias);
       };
       request.onerror = (e) => reject(e.target.error);
@@ -429,19 +459,27 @@ class DBManager {
         let compras = request.result || [];
         compras.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
 
-        if (filtroInicio) {
-          const inicioStr = String(filtroInicio).substring(0, 10);
-          compras = compras.filter(c => {
-            const dateStr = c.data ? String(c.data).substring(0, 10) : '';
-            return dateStr >= inicioStr;
-          });
-        }
+        const parseBound = (val, isEnd = false) => {
+          if (val === null || val === undefined || val === '') return null;
+          if (typeof val === 'number') return val;
+          const str = String(val).trim();
+          if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
+            const dt = new Date(`${str}${isEnd ? 'T23:59:59.999' : 'T00:00:00.000'}`);
+            return isNaN(dt.getTime()) ? null : dt.getTime();
+          }
+          const dt = new Date(str);
+          return isNaN(dt.getTime()) ? null : dt.getTime();
+        };
 
-        if (filtroFim) {
-          const fimStr = String(filtroFim).substring(0, 10);
+        const startTs = parseBound(filtroInicio, false);
+        const endTs = parseBound(filtroFim, true);
+
+        if (startTs !== null || endTs !== null) {
           compras = compras.filter(c => {
-            const dateStr = c.data ? String(c.data).substring(0, 10) : '';
-            return dateStr <= fimStr;
+            const cTs = c.timestamp || (c.data ? new Date(c.data).getTime() : 0);
+            if (startTs !== null && cTs < startTs) return false;
+            if (endTs !== null && cTs > endTs) return false;
+            return true;
           });
         }
 
