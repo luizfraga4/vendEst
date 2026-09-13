@@ -9,10 +9,12 @@ class ReportsModule {
     this.vendas = [];
     this.compras = [];
     this.sangrias = [];
+    this.produtosAgrupados = [];
     this.currentPeriod = 'TODAY'; // Padrão inicial: Data Atual (Hoje)
     this.currentPage = 1;
     this.pageSize = 50;
-    this.activeSubTab = 'sales'; // 'sales' | 'purchases'
+    this.activeSubTab = 'sales'; // 'sales' | 'products' | 'purchases'
+    this.productSort = 'qtd'; // 'qtd' | 'faturamento'
   }
 
   async init() {
@@ -29,6 +31,11 @@ class ReportsModule {
     const endDateInput = document.getElementById('report-end-date');
     if (startDateInput && !startDateInput.value) startDateInput.value = `${todayDateStr}T00:00`;
     if (endDateInput && !endDateInput.value) endDateInput.value = `${todayDateStr}T23:59`;
+
+    const startProdInput = document.getElementById('report-product-start-date');
+    const endProdInput = document.getElementById('report-product-end-date');
+    if (startProdInput && !startProdInput.value) startProdInput.value = `${todayDateStr}T00:00`;
+    if (endProdInput && !endProdInput.value) endProdInput.value = `${todayDateStr}T23:59`;
   }
 
   switchSubTab(tabName) {
@@ -42,6 +49,9 @@ class ReportsModule {
         this.activeSubTab = 'purchases';
         this.updateSubTabUI();
       }
+    } else if (tabName === 'products') {
+      this.activeSubTab = 'products';
+      this.updateSubTabUI();
     } else {
       this.activeSubTab = 'sales';
       this.updateSubTabUI();
@@ -50,29 +60,38 @@ class ReportsModule {
 
   updateSubTabUI() {
     const btnSales = document.getElementById('btn-subtab-sales');
+    const btnProducts = document.getElementById('btn-subtab-products');
     const btnPurchases = document.getElementById('btn-subtab-purchases');
+
     const containerSales = document.getElementById('subtab-sales-container');
+    const containerProducts = document.getElementById('subtab-products-container');
     const containerPurchases = document.getElementById('subtab-purchases-container');
 
+    const activeBtnClass = 'subtab-btn px-4 py-2 rounded-xl font-bold text-xs flex items-center gap-2 transition-all bg-indigo-600 text-white shadow-md cursor-pointer';
+    const inactiveBtnClass = 'subtab-btn px-4 py-2 rounded-xl font-bold text-xs flex items-center gap-2 transition-all bg-slate-800 text-slate-400 hover:text-slate-200 hover:bg-slate-700 cursor-pointer';
+
+    if (btnSales) btnSales.className = (this.activeSubTab === 'sales') ? activeBtnClass : inactiveBtnClass;
+    if (btnProducts) btnProducts.className = (this.activeSubTab === 'products') ? activeBtnClass : inactiveBtnClass;
+    if (btnPurchases) btnPurchases.className = (this.activeSubTab === 'purchases') ? activeBtnClass : inactiveBtnClass;
+
+    if (containerSales) {
+      if (this.activeSubTab === 'sales') containerSales.classList.remove('hidden');
+      else containerSales.classList.add('hidden');
+    }
+    if (containerProducts) {
+      if (this.activeSubTab === 'products') containerProducts.classList.remove('hidden');
+      else containerProducts.classList.add('hidden');
+    }
+    if (containerPurchases) {
+      if (this.activeSubTab === 'purchases') containerPurchases.classList.remove('hidden');
+      else containerPurchases.classList.add('hidden');
+    }
+
     if (this.activeSubTab === 'purchases') {
-      if (btnSales) {
-        btnSales.className = 'subtab-btn px-4 py-2 rounded-xl font-bold text-xs flex items-center gap-2 transition-all bg-slate-800 text-slate-400 hover:text-slate-200 hover:bg-slate-700 cursor-pointer';
-      }
-      if (btnPurchases) {
-        btnPurchases.className = 'subtab-btn px-4 py-2 rounded-xl font-bold text-xs flex items-center gap-2 transition-all bg-indigo-600 text-white shadow-md cursor-pointer';
-      }
-      if (containerSales) containerSales.classList.add('hidden');
-      if (containerPurchases) containerPurchases.classList.remove('hidden');
       this.renderizarComprasUI();
+    } else if (this.activeSubTab === 'products') {
+      this.renderizarRelatorioProdutosUI();
     } else {
-      if (btnSales) {
-        btnSales.className = 'subtab-btn px-4 py-2 rounded-xl font-bold text-xs flex items-center gap-2 transition-all bg-indigo-600 text-white shadow-md cursor-pointer';
-      }
-      if (btnPurchases) {
-        btnPurchases.className = 'subtab-btn px-4 py-2 rounded-xl font-bold text-xs flex items-center gap-2 transition-all bg-slate-800 text-slate-400 hover:text-slate-200 hover:bg-slate-700 cursor-pointer';
-      }
-      if (containerSales) containerSales.classList.remove('hidden');
-      if (containerPurchases) containerPurchases.classList.add('hidden');
       this.renderizarRelatorioVendas();
     }
   }
@@ -198,6 +217,8 @@ class ReportsModule {
       
       if (this.activeSubTab === 'purchases') {
         this.renderizarComprasUI();
+      } else if (this.activeSubTab === 'products') {
+        this.renderizarRelatorioProdutosUI();
       } else {
         this.renderizarRelatorioVendas();
       }
@@ -205,6 +226,187 @@ class ReportsModule {
     } catch (err) {
       console.error('Erro ao carregar relatórios:', err);
     }
+  }
+
+  setProductSort(sortType) {
+    this.productSort = sortType || 'qtd';
+    this.renderizarRelatorioProdutosUI();
+  }
+
+  applyProductDateFilter() {
+    this.renderizarRelatorioProdutosUI();
+  }
+
+  getProductDateTimeRange() {
+    const startEl = document.getElementById('report-product-start-date');
+    const endEl = document.getElementById('report-product-end-date');
+
+    const startVal = startEl ? startEl.value : null;
+    const endVal = endEl ? endEl.value : null;
+
+    let startTimestamp = this.parseInputDateTime(startVal, false);
+    let endTimestamp = this.parseInputDateTime(endVal, true);
+
+    const now = new Date();
+    if (!startTimestamp) {
+      startTimestamp = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0).getTime();
+    }
+    if (!endTimestamp) {
+      endTimestamp = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999).getTime();
+    }
+
+    return { startTimestamp, endTimestamp };
+  }
+
+  async renderizarRelatorioProdutosUI() {
+    const tbody = document.getElementById('report-products-table-body');
+    const totalQtyEl = document.getElementById('report-product-total-qty');
+    const top1NameEl = document.getElementById('report-product-top1-name');
+    const top1DetailsEl = document.getElementById('report-product-top1-details');
+
+    if (!tbody) return;
+
+    try {
+      const { startTimestamp, endTimestamp } = this.getProductDateTimeRange();
+
+      let vendasFiltradas = [];
+      if (window.dbManager && typeof window.dbManager.carregarRelatorioVendas === 'function') {
+        vendasFiltradas = await window.dbManager.carregarRelatorioVendas(startTimestamp, endTimestamp);
+      } else {
+        vendasFiltradas = this.vendas;
+      }
+
+      let catalog = [];
+      if (window.dbManager && typeof window.dbManager.listarProdutos === 'function') {
+        catalog = await window.dbManager.listarProdutos();
+      }
+      const catalogMap = new Map();
+      catalog.forEach(p => catalogMap.set(Number(p.id), p));
+
+      const productMap = new Map();
+
+      vendasFiltradas.forEach(venda => {
+        if (!Array.isArray(venda.itens)) return;
+        venda.itens.forEach(item => {
+          const key = item.id ? String(item.id) : String(item.code || item.name || 'desconhecido');
+          const qty = parseInt(item.qty || item.quantidade || 0, 10);
+          const price = typeof item.price === 'number' ? item.price : parseFloat(item.price || item.precoVenda || 0);
+          const total = typeof item.total === 'number' ? item.total : (qty * price);
+
+          const catItem = item.id ? catalogMap.get(Number(item.id)) : null;
+          const category = (catItem && (catItem.categoria || catItem.category))
+            ? (catItem.categoria || catItem.category)
+            : (item.categoria || item.category || 'Geral');
+          const code = item.code || item.codigo || (catItem ? (catItem.codigo || catItem.code) : '-') || '-';
+          const name = item.name || item.nome || (catItem ? (catItem.nome || catItem.name) : 'Produto sem nome') || 'Produto sem nome';
+
+          if (productMap.has(key)) {
+            const entry = productMap.get(key);
+            entry.qtdTotal += qty;
+            entry.faturamentoTotal += total;
+          } else {
+            productMap.set(key, {
+              key,
+              code,
+              name,
+              category,
+              qtdTotal: qty,
+              faturamentoTotal: total
+            });
+          }
+        });
+      });
+
+      const itemsArr = Array.from(productMap.values());
+      itemsArr.forEach(item => {
+        item.precoMedioUnitario = item.qtdTotal > 0 ? (item.faturamentoTotal / item.qtdTotal) : 0;
+      });
+
+      if (this.productSort === 'faturamento') {
+        itemsArr.sort((a, b) => b.faturamentoTotal - a.faturamentoTotal);
+      } else {
+        // 'qtd' (padrão decrescente por quantidade)
+        itemsArr.sort((a, b) => b.qtdTotal - a.qtdTotal);
+      }
+
+      this.produtosAgrupados = itemsArr;
+
+      const grandTotalQty = itemsArr.reduce((sum, i) => sum + i.qtdTotal, 0);
+      if (totalQtyEl) totalQtyEl.textContent = grandTotalQty.toLocaleString('pt-BR');
+
+      if (itemsArr.length > 0) {
+        const top1 = [...itemsArr].sort((a, b) => b.qtdTotal - a.qtdTotal)[0];
+        if (top1NameEl) top1NameEl.textContent = top1.name;
+        if (top1DetailsEl) top1DetailsEl.textContent = `${top1.qtdTotal} un. vendidas | R$ ${top1.faturamentoTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+      } else {
+        if (top1NameEl) top1NameEl.textContent = 'Nenhum no período';
+        if (top1DetailsEl) top1DetailsEl.textContent = '0 un. vendidas | R$ 0,00';
+      }
+
+      if (itemsArr.length === 0) {
+        tbody.innerHTML = `
+          <tr>
+            <td colspan="6" class="px-6 py-8 text-center text-slate-400">
+              <i class="fa-solid fa-boxes-stacked text-4xl text-slate-500 mb-2 block"></i>
+              <p class="font-medium text-slate-300">Nenhum produto vendido no período e horário selecionados.</p>
+            </td>
+          </tr>
+        `;
+        return;
+      }
+
+      tbody.innerHTML = itemsArr.map(item => `
+        <tr class="hover:bg-slate-800/50 transition-colors border-b border-slate-800/60 text-sm">
+          <td class="px-6 py-4 font-mono font-medium text-indigo-300">${item.code}</td>
+          <td class="px-6 py-4 font-semibold text-slate-100">${item.name}</td>
+          <td class="px-6 py-4">
+            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+              ${item.category}
+            </span>
+          </td>
+          <td class="px-6 py-4 text-center font-bold text-slate-200">${item.qtdTotal} un</td>
+          <td class="px-6 py-4 text-right font-mono text-slate-300">R$ ${item.precoMedioUnitario.toFixed(2)}</td>
+          <td class="px-6 py-4 text-right font-bold text-emerald-400">R$ ${item.faturamentoTotal.toFixed(2)}</td>
+        </tr>
+      `).join('');
+
+    } catch (err) {
+      console.error('Erro ao renderizar relatório de produtos:', err);
+    }
+  }
+
+  exportarRelatorioProdutosCSV() {
+    if (!this.produtosAgrupados || this.produtosAgrupados.length === 0) {
+      showToast('Nenhum dado de produto disponível para exportação.', 'warning');
+      return;
+    }
+
+    const headers = ['Código (SKU)', 'Nome do Produto', 'Categoria', 'Quantidade Vendida', 'Preço Médio Unitário (R$)', 'Faturamento Bruto (R$)'];
+    
+    const rows = this.produtosAgrupados.map(p => [
+      `"${String(p.code || '').replace(/"/g, '""')}"`,
+      `"${String(p.name || '').replace(/"/g, '""')}"`,
+      `"${String(p.category || '').replace(/"/g, '""')}"`,
+      p.qtdTotal,
+      p.precoMedioUnitario.toFixed(2).replace('.', ','),
+      p.faturamentoTotal.toFixed(2).replace('.', ',')
+    ]);
+
+    const csvContent = '\uFEFF' + [headers.join(';'), ...rows.map(e => e.join(';'))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    
+    const now = new Date();
+    const dateStr = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
+    
+    link.setAttribute('href', url);
+    link.setAttribute('download', `relatorio_vendas_produtos_${dateStr}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    showToast('Relatório de vendas por produto exportado para CSV!', 'success');
   }
 
   atualizarDRE() {
@@ -235,24 +437,32 @@ class ReportsModule {
     let totalCredito = 0;
     let totalDebito = 0;
 
+    const parsePaymentType = (formaStr) => {
+      if (!formaStr || typeof formaStr !== 'string') return 'DINHEIRO';
+      const norm = formaStr.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+      if (norm.includes('pix')) return 'PIX';
+      if (norm.includes('credito') || norm.includes('credit')) return 'CREDITO';
+      if (norm.includes('debito') || norm.includes('debit')) return 'DEBITO';
+      if (norm.includes('dinheiro') || norm.includes('cash') || norm.includes('especie')) return 'DINHEIRO';
+      return 'DINHEIRO';
+    };
+
     this.vendas.forEach(v => {
       if (Array.isArray(v.pagamentos) && v.pagamentos.length > 0) {
         v.pagamentos.forEach(p => {
           const val = Number(p.valor || 0);
-          const forma = String(p.forma || '').toUpperCase();
-          if (forma.includes('DINHEIRO')) totalDinheiro += val;
-          else if (forma.includes('PIX')) totalPix += val;
-          else if (forma.includes('CREDITO') || forma.includes('CRÉDITO')) totalCredito += val;
-          else if (forma.includes('DEBITO') || forma.includes('DÉBITO')) totalDebito += val;
+          const pType = parsePaymentType(p.forma || p.formaPagamento);
+          if (pType === 'PIX') totalPix += val;
+          else if (pType === 'CREDITO') totalCredito += val;
+          else if (pType === 'DEBITO') totalDebito += val;
           else totalDinheiro += val;
         });
       } else {
         const val = Number(v.total || 0);
-        const forma = String(v.formaPagamento || '').toUpperCase();
-        if (forma.includes('DINHEIRO')) totalDinheiro += val;
-        else if (forma.includes('PIX')) totalPix += val;
-        else if (forma.includes('CREDITO') || forma.includes('CRÉDITO')) totalCredito += val;
-        else if (forma.includes('DEBITO') || forma.includes('DÉBITO')) totalDebito += val;
+        const pType = parsePaymentType(v.formaPagamento);
+        if (pType === 'PIX') totalPix += val;
+        else if (pType === 'CREDITO') totalCredito += val;
+        else if (pType === 'DEBITO') totalDebito += val;
         else totalDinheiro += val;
       }
     });

@@ -84,24 +84,37 @@ class PDVModule {
 
     let vendasDinheiro = 0;
     let vendasPix = 0;
-    let vendasCartoes = 0;
+    let vendasDebito = 0;
+    let vendasCredito = 0;
     let totalSangrias = 0;
+
+    const parsePaymentType = (formaStr) => {
+      if (!formaStr || typeof formaStr !== 'string') return 'DINHEIRO';
+      const norm = formaStr.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+      if (norm.includes('pix')) return 'PIX';
+      if (norm.includes('credito') || norm.includes('credit')) return 'CREDITO';
+      if (norm.includes('debito') || norm.includes('debit')) return 'DEBITO';
+      if (norm.includes('dinheiro') || norm.includes('cash') || norm.includes('especie')) return 'DINHEIRO';
+      return 'DINHEIRO';
+    };
 
     vendas.forEach(v => {
       if (Array.isArray(v.pagamentos) && v.pagamentos.length > 0) {
         v.pagamentos.forEach(p => {
           const val = parseFloat(p.valor) || 0;
-          const formaUpper = String(p.forma || '').toUpperCase();
-          if (formaUpper.includes('DINHEIRO')) vendasDinheiro += val;
-          else if (formaUpper.includes('PIX')) vendasPix += val;
-          else vendasCartoes += val;
+          const pType = parsePaymentType(p.forma || p.formaPagamento);
+          if (pType === 'PIX') vendasPix += val;
+          else if (pType === 'CREDITO') vendasCredito += val;
+          else if (pType === 'DEBITO') vendasDebito += val;
+          else vendasDinheiro += val;
         });
       } else {
         const val = parseFloat(v.total) || 0;
-        const formaUpper = String(v.formaPagamento || '').toUpperCase();
-        if (formaUpper.includes('DINHEIRO')) vendasDinheiro += val;
-        else if (formaUpper.includes('PIX')) vendasPix += val;
-        else vendasCartoes += val;
+        const pType = parsePaymentType(v.formaPagamento);
+        if (pType === 'PIX') vendasPix += val;
+        else if (pType === 'CREDITO') vendasCredito += val;
+        else if (pType === 'DEBITO') vendasDebito += val;
+        else vendasDinheiro += val;
       }
     });
 
@@ -109,25 +122,50 @@ class PDVModule {
       totalSangrias += parseFloat(s.valor) || 0;
     });
 
-    const totalCaixaFinal = fundo + vendasDinheiro + vendasPix + vendasCartoes - totalSangrias;
+    const totalCaixaFinal = fundo + vendasDinheiro + vendasPix + vendasDebito + vendasCredito - totalSangrias;
 
-    document.getElementById('cash-close-initial').textContent = fundo.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-    document.getElementById('cash-close-money').textContent = vendasDinheiro.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-    document.getElementById('cash-close-pix').textContent = vendasPix.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-    document.getElementById('cash-close-cards').textContent = vendasCartoes.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-    
+    const initialEl = document.getElementById('cash-close-initial');
+    const moneyEl = document.getElementById('cash-close-money');
+    const pixEl = document.getElementById('cash-close-pix');
+    const debitoEl = document.getElementById('cash-close-debito');
+    const creditoEl = document.getElementById('cash-close-credito');
+    const cardsEl = document.getElementById('cash-close-cards');
     const sangriasEl = document.getElementById('cash-close-sangrias');
-    if (sangriasEl) sangriasEl.textContent = `- ${totalSangrias.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`;
+    const totalEl = document.getElementById('cash-close-total');
 
-    document.getElementById('cash-close-total').textContent = totalCaixaFinal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    if (initialEl) initialEl.textContent = fundo.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    if (moneyEl) moneyEl.textContent = vendasDinheiro.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    if (pixEl) pixEl.textContent = vendasPix.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    if (debitoEl) debitoEl.textContent = vendasDebito.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    if (creditoEl) creditoEl.textContent = vendasCredito.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    if (cardsEl) cardsEl.textContent = (vendasDebito + vendasCredito).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    if (sangriasEl) sangriasEl.textContent = `- ${totalSangrias.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`;
+    if (totalEl) totalEl.textContent = totalCaixaFinal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
     const modal = document.getElementById('modal-cash-close');
     if (modal) modal.classList.remove('hidden');
   }
 
   async closeRegister() {
-    const doBackup = document.getElementById('cash-close-backup-cb')?.checked;
-    
+    const backupCb = document.getElementById('cash-close-backup-cb');
+    const doBackup = backupCb ? backupCb.checked : false;
+
+    try {
+      if (window.dbManager && typeof window.dbManager.salvarSessaoCaixa === 'function') {
+        const fundo = parseFloat(localStorage.getItem('vendest_caixa_fundo')) || 0;
+        const aberturaTs = parseInt(localStorage.getItem('vendest_caixa_abertura_ts'), 10) || Date.now();
+        await dbManager.salvarSessaoCaixa({
+          fundoInicial: fundo,
+          dataHoraAbertura: new Date(aberturaTs).toISOString(),
+          dataHoraFechamento: new Date().toISOString(),
+          status: 'FECHADO',
+          operador: (window.authModule && window.authModule.currentUser) ? window.authModule.currentUser : 'Operador'
+        });
+      }
+    } catch (e) {
+      console.warn('Erro ao salvar historico de caixa fechado:', e);
+    }
+
     localStorage.setItem('vendest_caixa_aberto', 'false');
     this.closeCashRegisterModal();
     this.checkRegisterStatus();
@@ -223,8 +261,14 @@ class PDVModule {
 
     const amountReceivedInput = document.getElementById('pdv-amount-received');
     if (amountReceivedInput) {
-      ['input', 'keyup', 'change', 'blur'].forEach(evtName => {
-        amountReceivedInput.addEventListener(evtName, () => this.calculateChange());
+      ['input', 'keyup', 'change', 'blur'].forEach(evtName =>
+        amountReceivedInput.addEventListener(evtName, () => this.updatePaymentTotals())
+      );
+      amountReceivedInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          this.addPaymentFromInput();
+        }
       });
     }
 
@@ -503,20 +547,28 @@ class PDVModule {
     const input = document.getElementById('pdv-amount-received');
     if (input) {
       input.value = restante > 0 ? restante.toFixed(2) : '';
-      input.focus();
-      input.select();
+      setTimeout(() => {
+        input.focus();
+        input.select();
+      }, 50);
     }
   }
 
   addPaymentFromInput() {
     const input = document.getElementById('pdv-amount-received');
-    if (!input) return;
-    const val = parseFloat(input.value);
-    if (isNaN(val) || val <= 0) {
+    const val = input ? parseFloat(input.value) : 0;
+
+    const subtotal = this.cart.reduce((sum, item) => sum + item.total, 0);
+    const totalVenda = Math.max(0, subtotal - this.discount);
+    const totalPago = this.payments.reduce((acc, p) => acc + p.valor, 0);
+
+    if (!isNaN(val) && val > 0) {
+      this.addPayment(this.selectedPaymentMethod, val);
+    } else if (totalPago >= totalVenda - 0.001 && totalVenda > 0) {
+      this.submitSale();
+    } else {
       showToast('Digite um valor válido para o pagamento.', 'warning');
-      return;
     }
-    this.addPayment(this.selectedPaymentMethod, val);
   }
 
   addPayment(method, valor) {
@@ -530,6 +582,24 @@ class PDVModule {
 
     this.updatePaymentTotals();
     showToast(`Pagamento em ${this.getPaymentLabel(method)} (R$ ${val.toFixed(2)}) adicionado.`, 'success');
+
+    const subtotal = this.cart.reduce((sum, item) => sum + item.total, 0);
+    const totalVenda = Math.max(0, subtotal - this.discount);
+    const totalPago = this.payments.reduce((acc, p) => acc + p.valor, 0);
+    const restante = Math.max(0, totalVenda - totalPago);
+
+    const input = document.getElementById('pdv-amount-received');
+    if (input) {
+      if (restante > 0) {
+        input.value = restante.toFixed(2);
+        setTimeout(() => {
+          input.focus();
+          input.select();
+        }, 50);
+      } else {
+        input.value = '';
+      }
+    }
   }
 
   removePayment(index) {
@@ -578,11 +648,6 @@ class PDVModule {
     if (addedTotalEl) addedTotalEl.textContent = totalPago.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
     if (remainingEl) remainingEl.textContent = saldoRestante.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
-    const input = document.getElementById('pdv-amount-received');
-    if (input) {
-      input.value = saldoRestante > 0 ? saldoRestante.toFixed(2) : '';
-    }
-
     const totalDinheiro = this.payments
       .filter(p => String(p.forma).toUpperCase().includes('DINHEIRO'))
       .reduce((acc, p) => acc + p.valor, 0);
@@ -622,24 +687,24 @@ class PDVModule {
     }
 
     const modal = document.getElementById('modal-payment');
-    const subtotal = this.cart.reduce((sum, item) => sum + item.total, 0);
-    const finalTotal = Math.max(0, subtotal - this.discount);
-
     this.payments = [];
     this.selectedPaymentMethod = 'DINHEIRO';
 
     const obsInput = document.getElementById('pdv-sale-obs');
     if (obsInput) obsInput.value = '';
 
-    this.payments.push({
-      forma: 'DINHEIRO',
-      valor: finalTotal
-    });
-
     this.selectPaymentMethod('DINHEIRO');
     this.updatePaymentTotals();
 
     if (modal) modal.classList.remove('hidden');
+
+    setTimeout(() => {
+      const input = document.getElementById('pdv-amount-received');
+      if (input) {
+        input.focus();
+        input.select();
+      }
+    }, 100);
   }
 
   closePaymentModal() {
@@ -661,7 +726,8 @@ class PDVModule {
     }
 
     const troco = Math.max(0, totalPago - finalTotal);
-    const obsVal = document.getElementById('pdv-sale-obs')?.value.trim() || '';
+    const obsEl = document.getElementById('pdv-sale-obs');
+    const obsVal = obsEl ? obsEl.value.trim() : '';
 
     const pagamentosFormatados = this.payments.map(p => ({
       forma: this.getPaymentLabel(p.forma),

@@ -106,7 +106,10 @@ class BackupModule {
         showToast('Dados de backup restaurados com sucesso!', 'success');
 
         if (window.stockModule) await window.stockModule.loadProducts();
-        if (window.pdvModule) await window.pdvModule.loadProductCatalog();
+        if (window.pdvModule) {
+          window.pdvModule.checkRegisterStatus();
+          await window.pdvModule.loadProductCatalog();
+        }
         if (window.reportsModule) await window.reportsModule.carregarRelatorioVendasUI();
 
       } catch (err) {
