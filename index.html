@@ -994,8 +994,16 @@
 
       <form id="form-product" onsubmit="event.preventDefault(); stockModule.handleFormSubmit(event);" class="p-6 space-y-4">
         <div>
-          <label class="block text-xs font-semibold text-slate-400 mb-1">Código de Barras / SKU / EAN *</label>
-          <input type="text" id="product-code" required placeholder="Ex: 7891000100101" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-sm font-mono text-slate-100 focus:outline-none focus:border-indigo-500">
+          <label class="block text-xs font-semibold text-slate-400 mb-1">
+            Código de Barras / SKU / EAN
+            <span class="ml-1 text-slate-500 font-normal italic">— deixe em branco para gerar automaticamente</span>
+          </label>
+          <input type="text" id="product-code" placeholder="Bipe o código ou deixe em branco para gerar auto"
+            class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-sm font-mono text-slate-100 focus:outline-none focus:border-indigo-500">
+          <p id="product-code-error" class="hidden mt-1.5 text-xs text-rose-400 font-medium flex items-start gap-1">
+            <i class="fa-solid fa-triangle-exclamation mt-0.5 flex-shrink-0"></i>
+            <span></span>
+          </p>
         </div>
 
         <div>
@@ -1347,10 +1355,10 @@
   </div>
 
   <!-- Scripts JavaScript (Em ordem de dependência) -->
-  <script src="js/db.js?v=20260913b"></script>
+  <script src="js/db.js?v=20260913c"></script>
   <script src="js/auth.js?v=20260820b"></script>
   <script src="js/comandas.js?v=20260820b"></script>
-  <script src="js/stock.js?v=20260820b"></script>
+  <script src="js/stock.js?v=20260913b"></script>
   <script src="js/pdv.js?v=20260913b"></script>
   <script src="js/reports.js?v=20260820b"></script>
   <script src="js/backup.js?v=20260820b"></script>

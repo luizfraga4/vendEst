@@ -129,6 +129,34 @@ class DBManager {
   }
 
   /**
+   * obterProximoCodigoDisponivel():
+   * Calcula o próximo código sequencial interno disponível.
+   * - Considera apenas códigos numéricos "curtos" (≤ 7 dígitos) para evitar colisão com EANs comerciais.
+   * - Retorna o maior encontrado + 1. Se vazio, inicia em 1001.
+   * - Garante que o código retornado não esteja em uso (evita colisão).
+   */
+  async obterProximoCodigoDisponivel() {
+    const produtos = await this.listarProdutos();
+    const codigosEmUso = new Set(produtos.map(p => String(p.codigo || p.code || '').trim()));
+
+    // Filtra códigos estritamente numéricos com até 7 dígitos (exclui EANs com 8+ dígitos)
+    const codigosCurtos = produtos
+      .map(p => String(p.codigo || p.code || '').trim())
+      .filter(c => /^\d{1,7}$/.test(c))
+      .map(Number);
+
+    const maxCodigo = codigosCurtos.length > 0 ? Math.max(...codigosCurtos) : 1000;
+    let proximo = maxCodigo + 1;
+
+    // Garante que o próximo não colide com nenhum código já em uso
+    while (codigosEmUso.has(String(proximo))) {
+      proximo++;
+    }
+
+    return String(proximo);
+  }
+
+  /**
    * Exclui um produto do store 'produtos' pelo ID
    */
   async excluirProduto(id) {

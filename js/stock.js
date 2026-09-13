@@ -10,6 +10,7 @@ class StockModule {
     this.searchTerm = '';
     this.selectedCategory = 'ALL';
     this.editingProductId = null;
+    this.currentEditingId = null;
   }
 
   async init() {
@@ -175,43 +176,47 @@ class StockModule {
 
   async openProductModal(productId = null) {
     this.currentEditingId = productId;
-    this.editingProductId = productId; // mantendo fallback se algo usar
+    this.editingProductId = productId;
     const modal = document.getElementById('modal-product');
     const title = document.getElementById('modal-product-title');
-    
-    // Elementos do form
-    const formCodigo = document.getElementById('product-code');
-    const formNome = document.getElementById('product-name');
-    const formCategoria = document.getElementById('product-category');
-    const formQtd = document.getElementById('product-stock-qty');
-    const formCusto = document.getElementById('product-cost-price');
-    const formVenda = document.getElementById('product-sell-price');
-    const formMin = document.getElementById('product-min-stock-qty');
+
+    const formCodigo  = document.getElementById('product-code');
+    const formNome    = document.getElementById('product-name');
+    const formQtd     = document.getElementById('product-stock-qty');
+    const formCusto   = document.getElementById('product-cost-price');
+    const formVenda   = document.getElementById('product-sell-price');
+    const formMin     = document.getElementById('product-min-stock-qty');
+    const codeErrorEl = document.getElementById('product-code-error');
+
+    // Limpa mensagem de erro anterior
+    if (codeErrorEl) codeErrorEl.classList.add('hidden');
 
     if (productId) {
-      // Editar
+      // Editar produto existente
       const produtos = await dbManager.listarProdutos();
       const p = produtos.find(x => x.id === productId);
       if (p) {
         title.innerHTML = '<i class="fa-solid fa-pen text-indigo-400"></i> Editar Produto';
         formCodigo.value = p.codigo || p.code || '';
-        formNome.value = p.nome || p.name || '';
+        formNome.value   = p.nome || p.name || '';
         this.populateCategorySelect(p.categoria || p.category || 'Geral');
-        formQtd.value = p.quantidade || p.estoque || p.stockQty || 0;
+        formQtd.value   = p.quantidade || p.estoque || p.stockQty || 0;
         formCusto.value = p.precoCusto || p.costPrice || 0;
         formVenda.value = p.precoVenda || p.sellPrice || 0;
-        formMin.value = p.estoqueMinimo || p.minStock || 5;
+        formMin.value   = p.estoqueMinimo || p.minStock || 5;
       }
     } else {
-      // Novo
+      // Novo produto: campo de código VAZIO — bipa ou deixa em branco para gerar auto no save
       title.innerHTML = '<i class="fa-solid fa-plus text-indigo-400"></i> Novo Produto';
       document.getElementById('form-product').reset();
       formMin.value = 5;
       this.populateCategorySelect();
+      // formCodigo.value permanece '' após o reset — não preenche automaticamente
     }
 
     modal.classList.remove('hidden');
-    formCodigo.focus();
+    // Foca no campo de código imediatamente (pronto para o leitor de código de barras)
+    setTimeout(() => formCodigo.focus(), 80);
   }
 
   populateCategorySelect(selected = null) {
@@ -219,20 +224,20 @@ class StockModule {
     if (!select) return;
 
     let options = '';
-    
+
     // Se a categoria selecionada não estiver na lista global, adiciona temporariamente ao select
     let cats = [...(window.appModule ? window.appModule.categorias : ['Geral'])];
     if (selected && !cats.includes(selected)) {
       cats.push(selected);
     }
-    
+
     cats.sort().forEach(c => {
       options += `<option value="${c}">${c}</option>`;
     });
 
     options += `<option value="+ Nova Categoria" class="font-bold text-indigo-400">+ Nova Categoria...</option>`;
     select.innerHTML = options;
-    
+
     if (selected) {
       select.value = selected;
     }
@@ -243,10 +248,9 @@ class StockModule {
       const newCat = prompt('Digite o nome da nova categoria:');
       if (newCat && newCat.trim() !== '') {
         if (window.appModule) {
-          window.appModule.addCategory(newCat.trim()); // Isso irá repopular o select e selecionar
+          window.appModule.addCategory(newCat.trim());
         }
       } else {
-        // Voltar para a primeira opção se cancelou
         selectElement.selectedIndex = 0;
       }
     }
@@ -254,37 +258,81 @@ class StockModule {
 
   closeProductModal() {
     const modal = document.getElementById('modal-product');
-    modal.classList.add('hidden');
+    if (modal) modal.classList.add('hidden');
     this.currentEditingId = null;
+    this.editingProductId = null;
+    const codeErrorEl = document.getElementById('product-code-error');
+    if (codeErrorEl) codeErrorEl.classList.add('hidden');
   }
 
+  /**
+   * handleFormSubmit: salva produto com geração automática de código se campo em branco.
+   *
+   * Fluxo:
+   *   - Código em branco → gera sequencial automático via obterProximoCodigoDisponivel()
+   *   - Código preenchido (manual/bipado) → valida duplicidade antes de salvar
+   */
   async handleFormSubmit(e) {
     if (e) e.preventDefault();
 
-    const codigo = document.getElementById('product-code').value.trim();
-    const nome = document.getElementById('product-name').value.trim();
+    const codigoInput = document.getElementById('product-code');
+    const nomeInput   = document.getElementById('product-name');
+    const codeErrorEl = document.getElementById('product-code-error');
+
+    if (codeErrorEl) codeErrorEl.classList.add('hidden');
+
+    let codigoInformado = codigoInput ? codigoInput.value.trim() : '';
+    const nome = nomeInput ? nomeInput.value.trim() : '';
+
     let categoria = document.getElementById('product-category').value.trim();
     if (!categoria || categoria === '+ Nova Categoria') categoria = 'Geral';
-    const precoCusto = parseFloat(document.getElementById('product-cost-price').value) || 0;
-    const precoVenda = parseFloat(document.getElementById('product-sell-price').value) || 0;
-    const quantidade = parseInt(document.getElementById('product-stock-qty').value, 10) || 0;
+
+    const precoCusto  = parseFloat(document.getElementById('product-cost-price').value)  || 0;
+    const precoVenda  = parseFloat(document.getElementById('product-sell-price').value)  || 0;
+    const quantidade  = parseInt(document.getElementById('product-stock-qty').value, 10) || 0;
     let estoqueMinimo = parseInt(document.getElementById('product-min-stock-qty').value, 10);
     if (isNaN(estoqueMinimo)) estoqueMinimo = 5;
 
-    if (!codigo || !nome) {
-      showToast('Preencha pelo menos o Código e o Nome do produto.', 'warning');
+    if (!nome) {
+      showToast('Preencha pelo menos o Nome do produto.', 'warning');
+      if (nomeInput) nomeInput.focus();
       return;
     }
 
-    const existing = await dbManager.buscarProdutoPorCodigo(codigo);
-    if (existing && existing.id !== this.editingProductId) {
-      showToast(`Já existe um produto com o Código / SKU "${codigo}".`, 'error');
-      return;
+    // --- Código em branco: gera automático no momento do save ---
+    if (!codigoInformado) {
+      try {
+        codigoInformado = await dbManager.obterProximoCodigoDisponivel();
+        if (codigoInput) codigoInput.value = codigoInformado; // Exibe o código gerado no campo
+      } catch (err) {
+        console.error('[StockModule] Falha ao gerar código automático:', err);
+        showToast('Não foi possível gerar um código automático. Preencha o campo manualmente.', 'error');
+        if (codigoInput) codigoInput.focus();
+        return;
+      }
+    } else {
+      // --- Código informado manualmente/bipado: valida duplicidade ---
+      const existing = await dbManager.buscarProdutoPorCodigo(codigoInformado);
+      const isConflito = existing && Number(existing.id) !== Number(this.editingProductId);
+      if (isConflito) {
+        const nomeConflito = existing.nome || existing.name || 'desconhecido';
+        const mensagem = `O código "${codigoInformado}" já está em uso pelo produto "${nomeConflito}". Bipe outro código ou apague o campo para gerar automático.`;
+        if (codeErrorEl) {
+          const spanEl = codeErrorEl.querySelector('span');
+          if (spanEl) spanEl.textContent = mensagem;
+          else codeErrorEl.textContent = mensagem;
+          codeErrorEl.classList.remove('hidden');
+        } else {
+          showToast(mensagem, 'error');
+        }
+        if (codigoInput) { codigoInput.focus(); codigoInput.select(); }
+        return;
+      }
     }
 
     const produtoData = {
-      id: this.editingProductId,
-      codigo,
+      id: this.editingProductId || null,
+      codigo: codigoInformado,
       nome,
       categoria,
       precoCusto,
@@ -295,13 +343,16 @@ class StockModule {
 
     try {
       await dbManager.salvarProduto(produtoData);
-      showToast(this.editingProductId ? 'Produto atualizado com sucesso!' : 'Produto cadastrado com sucesso!', 'success');
+      showToast(
+        this.editingProductId
+          ? 'Produto atualizado com sucesso!'
+          : `Produto "${nome}" cadastrado com código ${codigoInformado}!`,
+        'success'
+      );
       this.closeProductModal();
       await this.loadProducts();
-
-      if (window.pdvModule) {
-        window.pdvModule.loadProductCatalog();
-      }
+      if (window.pdvModule)      window.pdvModule.loadProductCatalog();
+      if (window.comandasModule) window.comandasModule.loadCatalog();
     } catch (err) {
       console.error('Erro ao salvar produto:', err);
       showToast('Erro ao salvar produto no banco de dados local.', 'error');
