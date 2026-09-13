@@ -231,14 +231,29 @@
     <!-- ABA 1.5: COMANDAS ABERTAS                                            -->
     <!-- ==================================================================== -->
     <div id="tab-comandas" class="tab-content hidden space-y-6">
-      <div class="flex items-center justify-between">
+      <div class="flex flex-wrap items-center justify-between gap-4">
         <h2 class="text-xl font-bold text-slate-100 flex items-center gap-2">
           <i class="fa-solid fa-clipboard-list text-indigo-400"></i> Gestão de Comandas
         </h2>
-        <button onclick="comandasModule.criarComanda()" class="flex items-center space-x-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-2.5 px-5 rounded-xl shadow-lg shadow-indigo-600/30 transition-all text-sm cursor-pointer">
-          <i class="fa-solid fa-plus"></i>
-          <span>Nova Comanda</span>
-        </button>
+        <div class="flex flex-wrap items-center gap-3">
+          <div class="flex items-center gap-2">
+            <label for="comandas-sort-select" class="text-xs font-semibold text-slate-400 hidden sm:inline-block">Ordenar por:</label>
+            <select id="comandas-sort-select" onchange="comandasModule.setSort(this.value)" class="bg-slate-800 border border-slate-700 text-slate-200 text-xs font-semibold rounded-xl px-3 py-2.5 focus:outline-none focus:border-indigo-500 cursor-pointer">
+              <option value="recentes">Mais recentes primeiro</option>
+              <option value="antigas">Mais antigas primeiro</option>
+              <option value="nome">Número/Nome (A-Z)</option>
+              <option value="valor">Maior Valor</option>
+            </select>
+          </div>
+          <button onclick="comandasModule.abrirModalMesclarComanda()" class="flex items-center space-x-2 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-bold py-2.5 px-4 rounded-xl shadow transition-all text-sm cursor-pointer">
+            <i class="fa-solid fa-code-merge text-indigo-400"></i>
+            <span>Mesclar Comanda</span>
+          </button>
+          <button onclick="comandasModule.criarComanda()" class="flex items-center space-x-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-2.5 px-5 rounded-xl shadow-lg shadow-indigo-600/30 transition-all text-sm cursor-pointer">
+            <i class="fa-solid fa-plus"></i>
+            <span>Nova Comanda</span>
+          </button>
+        </div>
       </div>
 
       <div id="comandas-grid" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
@@ -400,11 +415,14 @@
         </div>
       </div>
 
-      <!-- Navegação Secundária: Vendas & DRE vs Compras & Despesas -->
+      <!-- Navegação Secundária: Vendas & DRE vs Vendas por Produto vs Compras & Despesas -->
       <div class="flex flex-wrap items-center justify-between gap-4 border-b border-slate-700/60 pb-3">
         <div class="flex items-center space-x-2">
           <button id="btn-subtab-sales" onclick="reportsModule.switchSubTab('sales')" class="subtab-btn px-4 py-2 rounded-xl font-bold text-xs flex items-center gap-2 transition-all bg-indigo-600 text-white shadow-md cursor-pointer">
             <i class="fa-solid fa-receipt"></i> Vendas & DRE
+          </button>
+          <button id="btn-subtab-products" onclick="reportsModule.switchSubTab('products')" class="subtab-btn px-4 py-2 rounded-xl font-bold text-xs flex items-center gap-2 transition-all bg-slate-800 text-slate-400 hover:text-slate-200 hover:bg-slate-700 cursor-pointer">
+            <i class="fa-solid fa-chart-pie"></i> Vendas por Produto
           </button>
           <button id="btn-subtab-purchases" onclick="reportsModule.switchSubTab('purchases')" class="subtab-btn px-4 py-2 rounded-xl font-bold text-xs flex items-center gap-2 transition-all bg-slate-800 text-slate-400 hover:text-slate-200 hover:bg-slate-700 cursor-pointer">
             <i class="fa-solid fa-bag-shopping"></i> Compras & Despesas
@@ -484,6 +502,82 @@
                 Próxima <i class="fa-solid fa-chevron-right ml-1"></i>
               </button>
             </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SEÇÃO 1.5: Vendas por Produto (Curva de Saída) -->
+      <div id="subtab-products-container" class="hidden space-y-4">
+        <!-- Cards de KPIs do Relatório de Produtos -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div class="bg-slate-800/80 rounded-2xl p-5 border border-slate-700/60 shadow-lg">
+            <div class="flex justify-between items-center mb-1">
+              <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Total de Itens Vendidos no Período</span>
+              <i class="fa-solid fa-boxes-stacked text-indigo-400 text-lg"></i>
+            </div>
+            <p id="report-product-total-qty" class="text-3xl font-black text-slate-100">0</p>
+            <p class="text-xs text-slate-400 mt-1">Soma da quantidade de todos os itens vendidos no intervalo</p>
+          </div>
+
+          <div class="bg-slate-800/80 rounded-2xl p-5 border border-slate-700/60 shadow-lg">
+            <div class="flex justify-between items-center mb-1">
+              <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Produto Campeão de Vendas (Top 1)</span>
+              <i class="fa-solid fa-trophy text-amber-400 text-lg"></i>
+            </div>
+            <p id="report-product-top1-name" class="text-xl font-bold text-amber-400 truncate">Nenhum no período</p>
+            <p id="report-product-top1-details" class="text-xs text-slate-400 mt-1">0 un. vendidas | R$ 0,00</p>
+          </div>
+        </div>
+
+        <!-- Filtros e Ações Específicas do Relatório de Produtos -->
+        <div class="bg-slate-800/80 rounded-2xl p-4 border border-slate-700/60 shadow-lg flex flex-col lg:flex-row items-center justify-between gap-4">
+          <div class="flex flex-wrap items-center gap-3 w-full lg:w-auto">
+            <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+              <i class="fa-solid fa-clock text-indigo-400"></i> Filtro por Data e Horário:
+            </span>
+            <div class="flex flex-wrap items-center gap-2">
+              <input type="datetime-local" id="report-product-start-date" class="bg-slate-900 border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500">
+              <span class="text-slate-500 text-xs">até</span>
+              <input type="datetime-local" id="report-product-end-date" class="bg-slate-900 border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500">
+              <button onclick="reportsModule.applyProductDateFilter()" class="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold px-3.5 py-1.5 rounded-xl shadow transition-colors cursor-pointer">
+                Filtrar
+              </button>
+            </div>
+          </div>
+
+          <div class="flex items-center gap-3 w-full lg:w-auto justify-end">
+            <div class="flex items-center gap-1.5">
+              <label for="report-product-sort-select" class="text-xs font-semibold text-slate-400">Ordenar por:</label>
+              <select id="report-product-sort-select" onchange="reportsModule.setProductSort(this.value)" class="bg-slate-900 border border-slate-700 text-slate-200 text-xs font-semibold rounded-xl px-3 py-1.5 focus:outline-none focus:border-indigo-500 cursor-pointer">
+                <option value="qtd">Mais Vendidos (Qtd)</option>
+                <option value="faturamento">Maior Faturamento (R$)</option>
+              </select>
+            </div>
+
+            <button onclick="reportsModule.exportarRelatorioProdutosCSV()" class="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-3.5 py-1.5 rounded-xl shadow flex items-center gap-1.5 transition-colors cursor-pointer">
+              <i class="fa-solid fa-file-csv"></i> Exportar CSV
+            </button>
+          </div>
+        </div>
+
+        <!-- Tabela de Produtos Vendidos -->
+        <div class="bg-slate-800/80 rounded-2xl border border-slate-700/60 shadow-xl overflow-hidden">
+          <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse">
+              <thead>
+                <tr class="bg-slate-950/60 text-slate-400 text-xs font-semibold uppercase tracking-wider border-b border-slate-700/60">
+                  <th class="px-6 py-4">Cód. SKU</th>
+                  <th class="px-6 py-4">Nome do Produto</th>
+                  <th class="px-6 py-4">Categoria</th>
+                  <th class="px-6 py-4 text-center">Qtd Total Vendida</th>
+                  <th class="px-6 py-4 text-right">Valor Médio Unitário</th>
+                  <th class="px-6 py-4 text-right">Faturamento Bruto</th>
+                </tr>
+              </thead>
+              <tbody id="report-products-table-body" class="divide-y divide-slate-800">
+                <!-- Renderizado via JS -->
+              </tbody>
+            </table>
           </div>
         </div>
       </div>
@@ -785,15 +879,76 @@
         </table>
       </div>
 
-      <div class="p-5 bg-slate-950 border-t border-slate-800 flex items-center justify-between">
+      <div id="comanda-modal-notes-container" class="hidden px-4 py-2.5 bg-indigo-950/60 border-t border-b border-indigo-900/50 text-xs text-indigo-300 flex items-center gap-2">
+        <i class="fa-solid fa-circle-info text-indigo-400"></i>
+        <span id="comanda-modal-notes-text"></span>
+      </div>
+
+      <div class="p-5 bg-slate-950 border-t border-slate-800 flex flex-wrap items-center justify-between gap-3">
         <div class="flex flex-col">
           <span class="text-xs font-bold text-slate-400 uppercase">Total Parcial</span>
           <span id="comanda-modal-total" class="text-2xl font-black text-emerald-400">R$ 0,00</span>
         </div>
-        <button onclick="comandasModule.enviarParaPDV()" class="bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-2.5 px-6 rounded-xl shadow-lg transition-all text-sm flex items-center gap-2 cursor-pointer">
-          <i class="fa-solid fa-cart-arrow-down"></i>
-          <span>Enviar para PDV / Receber</span>
+        <div class="flex items-center gap-2">
+          <button onclick="comandasModule.excluirComandaComAlcada(comandasModule.currentComanda && comandasModule.currentComanda.id)" class="bg-rose-600/20 hover:bg-rose-600 text-rose-400 hover:text-white border border-rose-600/30 font-bold py-2.5 px-4 rounded-xl shadow transition-all text-xs sm:text-sm flex items-center gap-2 cursor-pointer" title="Excluir Comanda">
+            <i class="fa-solid fa-trash-can"></i>
+            <span>Excluir Comanda</span>
+          </button>
+          <button onclick="comandasModule.enviarParaPDV()" class="bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-2.5 px-5 sm:px-6 rounded-xl shadow-lg transition-all text-xs sm:text-sm flex items-center gap-2 cursor-pointer">
+            <i class="fa-solid fa-cart-arrow-down"></i>
+            <span>Enviar para PDV / Receber</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: Mesclar Comandas -->
+  <div id="modal-mesclar-comanda" class="modal-container hidden fixed inset-0 z-50 flex items-center justify-center bg-slate-950/90 backdrop-blur-sm p-4 no-print">
+    <div class="bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl max-w-md w-full overflow-hidden flex flex-col">
+      <div class="p-5 bg-slate-950/60 border-b border-slate-800 flex items-center justify-between">
+        <h3 class="font-bold text-lg text-slate-100 flex items-center gap-2">
+          <i class="fa-solid fa-code-merge text-indigo-400"></i> Mesclar Comandas (Unificação)
+        </h3>
+        <button onclick="comandasModule.fecharModalMesclarComanda()" class="text-slate-400 hover:text-slate-200">
+          <i class="fa-solid fa-xmark text-lg"></i>
         </button>
+      </div>
+      <div class="p-6 space-y-4">
+        <p class="text-xs text-slate-400">
+          Selecione a comanda de origem (que será unificada e absorvida) e a comanda de destino que receberá os itens.
+        </p>
+
+        <div>
+          <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
+            Comanda de Origem (Absorvida)
+          </label>
+          <select id="merge-source-comanda" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-indigo-500">
+            <option value="">Selecione a comanda de origem...</option>
+          </select>
+        </div>
+
+        <div class="text-center text-slate-500 my-1">
+          <i class="fa-solid fa-arrow-down text-lg"></i>
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
+            Comanda de Destino (Principal)
+          </label>
+          <select id="merge-target-comanda" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-indigo-500">
+            <option value="">Selecione a comanda de destino...</option>
+          </select>
+        </div>
+
+        <div class="pt-4 flex justify-end space-x-3 border-t border-slate-800">
+          <button onclick="comandasModule.fecharModalMesclarComanda()" class="px-4 py-2.5 rounded-xl text-sm font-semibold text-slate-400 hover:bg-slate-800 transition-colors">
+            Cancelar
+          </button>
+          <button onclick="comandasModule.confirmarMesclarComandas()" class="px-5 py-2.5 rounded-xl text-sm font-bold bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg transition-all flex items-center gap-2 cursor-pointer">
+            <i class="fa-solid fa-check"></i> Confirmar Mesclagem
+          </button>
+        </div>
       </div>
     </div>
   </div>
@@ -1155,8 +1310,12 @@
             <span id="cash-close-pix" class="font-semibold text-slate-100">R$ 0,00</span>
           </div>
           <div class="flex justify-between items-center text-slate-300 py-1 border-b border-slate-800">
-            <span>Vendas Crédito/Débito:</span>
-            <span id="cash-close-cards" class="font-semibold text-slate-100">R$ 0,00</span>
+            <span>Vendas Cartão Débito:</span>
+            <span id="cash-close-debito" class="font-semibold text-slate-100">R$ 0,00</span>
+          </div>
+          <div class="flex justify-between items-center text-slate-300 py-1 border-b border-slate-800">
+            <span>Vendas Cartão Crédito:</span>
+            <span id="cash-close-credito" class="font-semibold text-slate-100">R$ 0,00</span>
           </div>
           <div class="flex justify-between items-center text-rose-300 py-1 border-b border-slate-800">
             <span>Total de Sangrias:</span>
@@ -1188,11 +1347,11 @@
   </div>
 
   <!-- Scripts JavaScript (Em ordem de dependência) -->
-  <script src="js/db.js?v=20260820b"></script>
+  <script src="js/db.js?v=20260913b"></script>
   <script src="js/auth.js?v=20260820b"></script>
   <script src="js/comandas.js?v=20260820b"></script>
   <script src="js/stock.js?v=20260820b"></script>
-  <script src="js/pdv.js?v=20260820c"></script>
+  <script src="js/pdv.js?v=20260913b"></script>
   <script src="js/reports.js?v=20260820b"></script>
   <script src="js/backup.js?v=20260820b"></script>
   <script src="js/app.js?v=20260820b"></script>
