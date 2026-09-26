@@ -140,15 +140,17 @@ class BackupModule {
         const cat = p.categoria || p.category || 'Geral';
         const precoCusto = parseFloat(p.precoCusto || p.costPrice || 0);
         const precoVenda = parseFloat(p.precoVenda || p.sellPrice || 0);
-        const estoque = parseInt(p.estoque || p.stockQty || 0, 10);
+        const estoque = parseInt(p.quantidade || p.estoque || p.stockQty || 0, 10);
+        const controla = p.controlaEstoque !== undefined ? Boolean(p.controlaEstoque) : true;
 
         const costStr = precoCusto.toFixed(2).replace('.', ',');
         const sellStr = precoVenda.toFixed(2).replace('.', ',');
-        const totalStr = (precoVenda * estoque).toFixed(2).replace('.', ',');
+        const estoqueStr = controla ? estoque : "Sem Controle";
+        const totalStr = controla ? (precoVenda * estoque).toFixed(2).replace('.', ',') : "0,00";
         const nameClean = `"${nome.replace(/"/g, '""')}"`;
         const catClean = `"${cat.replace(/"/g, '""')}"`;
 
-        csvContent += `"${codigo}";${nameClean};${catClean};${costStr};${sellStr};${estoque};${totalStr}\n`;
+        csvContent += `"${codigo}";${nameClean};${catClean};${costStr};${sellStr};${estoqueStr};${totalStr}\n`;
       });
 
       const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });

@@ -330,15 +330,19 @@ class PDVModule {
       return;
     }
 
-    resultsContainer.innerHTML = filtered.map(p => `
-      <div onclick="pdvModule.selectSearchResult(${p.id})" class="flex items-center justify-between p-3 hover:bg-slate-700/90 cursor-pointer border-b border-slate-700/50 last:border-0 transition-colors">
-        <div>
-          <p class="font-semibold text-sm text-slate-100">${p.nome || p.name || ''}</p>
-          <p class="text-xs text-slate-400 font-mono">SKU: ${p.codigo || p.code || ''} | Estoque: ${p.quantidade || p.estoque || 0} un</p>
+    resultsContainer.innerHTML = filtered.map(p => {
+      const controla = p.controlaEstoque !== undefined ? Boolean(p.controlaEstoque) : true;
+      const stockText = controla ? `Estoque: ${p.quantidade || p.estoque || 0} un` : `Estoque: Sem Controle`;
+      return `
+        <div onclick="pdvModule.selectSearchResult(${p.id})" class="flex items-center justify-between p-3 hover:bg-slate-700/90 cursor-pointer border-b border-slate-700/50 last:border-0 transition-colors">
+          <div>
+            <p class="font-semibold text-sm text-slate-100">${p.nome || p.name || ''}</p>
+            <p class="text-xs text-slate-400 font-mono">SKU: ${p.codigo || p.code || ''} | ${stockText}</p>
+          </div>
+          <span class="font-bold text-emerald-400 text-sm">R$ ${parseFloat(p.precoVenda || 0).toFixed(2)}</span>
         </div>
-        <span class="font-bold text-emerald-400 text-sm">R$ ${parseFloat(p.precoVenda || 0).toFixed(2)}</span>
-      </div>
-    `).join('');
+      `;
+    }).join('');
 
     resultsContainer.classList.remove('hidden');
   }
@@ -360,19 +364,20 @@ class PDVModule {
   }
 
   addProductToCart(product) {
+    const controlaEstoque = product.controlaEstoque !== undefined ? Boolean(product.controlaEstoque) : true;
     const estoqueAtual = parseInt(product.quantidade || product.estoque || product.stockQty || 0, 10);
     const precoVenda = parseFloat(product.precoVenda || product.sellPrice || 0);
     const codigo = product.codigo || product.code || '';
     const nome = product.nome || product.name || '';
 
-    if (estoqueAtual <= 0) {
+    if (controlaEstoque && estoqueAtual <= 0) {
       showToast(`Atenção: O produto "${nome}" está com ESTOQUE ZERADO!`, 'error');
     }
 
     const existingIndex = this.cart.findIndex(item => item.id === product.id);
 
     if (existingIndex > -1) {
-      if (this.cart[existingIndex].qty + 1 > estoqueAtual) {
+      if (controlaEstoque && (this.cart[existingIndex].qty + 1 > estoqueAtual)) {
         showToast(`Quantidade solicitada excede o estoque atual (${estoqueAtual} un).`, 'warning');
       }
       this.cart[existingIndex].qty += 1;
@@ -385,7 +390,8 @@ class PDVModule {
         price: precoVenda,
         qty: 1,
         total: precoVenda,
-        maxStock: estoqueAtual
+        maxStock: controlaEstoque ? estoqueAtual : Infinity,
+        controlaEstoque: controlaEstoque
       });
     }
 
@@ -396,18 +402,19 @@ class PDVModule {
   updateCartQty(index, delta) {
     if (!this.cart[index]) return;
 
-    const newQty = this.cart[index].qty + delta;
+    const item = this.cart[index];
+    const newQty = item.qty + delta;
     if (newQty <= 0) {
       this.removeCartItem(index);
       return;
     }
 
-    if (newQty > this.cart[index].maxStock) {
-      showToast(`Quantidade máxima em estoque atingida (${this.cart[index].maxStock} un).`, 'warning');
+    if (item.controlaEstoque && item.maxStock !== Infinity && newQty > item.maxStock) {
+      showToast(`Quantidade máxima em estoque atingida (${item.maxStock} un).`, 'warning');
     }
 
-    this.cart[index].qty = newQty;
-    this.cart[index].total = newQty * this.cart[index].price;
+    item.qty = newQty;
+    item.total = newQty * item.price;
     this.renderCart();
   }
 

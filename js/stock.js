@@ -114,8 +114,9 @@ class StockModule {
       const precoCusto = parseFloat(p.precoCusto || p.costPrice || 0);
       const precoVenda = parseFloat(p.precoVenda || p.sellPrice || 0);
       const estoque = parseInt(p.quantidade || p.estoque || p.stockQty || 0, 10);
-      const estoqueMinimo = parseInt(p.estoqueMinimo || 5, 10);
-      const isLowStock = estoque <= estoqueMinimo;
+      const estoqueMinimo = parseInt(p.estoqueMinimo || p.minEstoque || p.minStock || 5, 10);
+      const controlaEstoque = p.controlaEstoque !== undefined ? Boolean(p.controlaEstoque) : true;
+      const isLowStock = controlaEstoque && (estoque <= estoqueMinimo);
       const pid = Number(p.id);
 
       return `
@@ -131,12 +132,18 @@ class StockModule {
           <td class="px-6 py-4 font-semibold text-emerald-400">R$ ${precoVenda.toFixed(2)}</td>
           <td class="px-6 py-4">
             <div class="flex items-center space-x-2">
-              <span class="font-bold ${isLowStock ? 'text-amber-400' : 'text-slate-200'}">${estoque} un</span>
-              ${isLowStock ? `
-                <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                  <i class="fa-solid fa-triangle-exclamation mr-1"></i> Baixo
+              ${controlaEstoque ? `
+                <span class="font-bold ${isLowStock ? 'text-amber-400' : 'text-slate-200'}">${estoque} un</span>
+                ${isLowStock ? `
+                  <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                    <i class="fa-solid fa-triangle-exclamation mr-1"></i> Baixo
+                  </span>
+                ` : ''}
+              ` : `
+                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-800 text-slate-400 border border-slate-700/60" title="Estoque não controlado">
+                  Sem Controle
                 </span>
-              ` : ''}
+              `}
             </div>
           </td>
           <td class="px-6 py-4 text-right space-x-2">
@@ -162,15 +169,62 @@ class StockModule {
     const validProdutos = produtos.filter(p => p != null);
     const totalProducts = validProdutos.length;
     const lowStockCount = validProdutos.filter(p => {
+      const controla = p.controlaEstoque !== undefined ? Boolean(p.controlaEstoque) : true;
+      if (!controla) return false;
       const q = (p.quantidade || p.estoque || p.stockQty || 0);
-      const min = parseInt(p.estoqueMinimo || 5, 10);
+      const min = parseInt(p.estoqueMinimo || p.minEstoque || p.minStock || 5, 10);
       return q <= min;
     }).length;
-    const totalValue = validProdutos.reduce((acc, p) => acc + ((p.precoVenda || p.sellPrice || 0) * (p.quantidade || p.estoque || p.stockQty || 0)), 0);
+    const totalValue = validProdutos.reduce((acc, p) => {
+      const controla = p.controlaEstoque !== undefined ? Boolean(p.controlaEstoque) : true;
+      if (!controla) return acc;
+      return acc + ((p.precoVenda || p.sellPrice || 0) * (p.quantidade || p.estoque || p.stockQty || 0));
+    }, 0);
 
     if (totalItemsEl) totalItemsEl.textContent = totalProducts;
     if (lowStockCountEl) lowStockCountEl.textContent = lowStockCount;
     if (stockTotalValueEl) stockTotalValueEl.textContent = totalValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+  }
+
+  toggleStockControlFields(enabled) {
+    const isControl = Boolean(enabled);
+    const formQtd = document.getElementById('product-stock-qty');
+    const formMin = document.getElementById('product-min-stock-qty');
+    const reqStar = document.getElementById('lbl-stock-qty-required');
+    const controlCb = document.getElementById('product-control-stock');
+
+    if (controlCb && controlCb.checked !== isControl) {
+      controlCb.checked = isControl;
+    }
+
+    [formQtd, formMin].forEach(el => {
+      if (el) {
+        el.disabled = !isControl;
+        if (!isControl) {
+          el.classList.add('opacity-40', 'cursor-not-allowed', 'bg-slate-900');
+          el.classList.remove('bg-slate-950');
+        } else {
+          el.classList.remove('opacity-40', 'cursor-not-allowed', 'bg-slate-950');
+          el.classList.add('bg-slate-950');
+        }
+      }
+    });
+
+    if (formQtd) {
+      if (isControl) {
+        formQtd.setAttribute('required', 'required');
+      } else {
+        formQtd.removeAttribute('required');
+      }
+    }
+
+    if (reqStar) {
+      if (isControl) {
+        reqStar.classList.remove('hidden');
+      } else {
+        reqStar.classList.add('hidden');
+      }
+    }
   }
 
   async openProductModal(productId = null) {
@@ -197,10 +251,13 @@ class StockModule {
         formCodigo.value = p.codigo || p.code || '';
         formNome.value = p.nome || p.name || '';
         this.populateCategorySelect(p.categoria || p.category || 'Geral');
-        formQtd.value = p.quantidade || p.estoque || p.stockQty || 0;
+        formQtd.value = p.quantidade !== undefined ? p.quantidade : (p.estoque !== undefined ? p.estoque : (p.stockQty || 0));
         formCusto.value = p.precoCusto || p.costPrice || 0;
         formVenda.value = p.precoVenda || p.sellPrice || 0;
-        formMin.value = p.estoqueMinimo || p.minStock || 5;
+        formMin.value = p.estoqueMinimo || p.minEstoque || p.minStock || 5;
+
+        const controla = p.controlaEstoque !== undefined ? Boolean(p.controlaEstoque) : true;
+        this.toggleStockControlFields(controla);
       }
     } else {
       // Novo
@@ -208,6 +265,7 @@ class StockModule {
       document.getElementById('form-product').reset();
       formMin.value = 5;
       this.populateCategorySelect();
+      this.toggleStockControlFields(true);
     }
 
     modal.classList.remove('hidden');
@@ -267,7 +325,9 @@ class StockModule {
     if (!categoria || categoria === '+ Nova Categoria') categoria = 'Geral';
     const precoCusto = parseFloat(document.getElementById('product-cost-price').value) || 0;
     const precoVenda = parseFloat(document.getElementById('product-sell-price').value) || 0;
-    const quantidade = parseInt(document.getElementById('product-stock-qty').value, 10) || 0;
+    const controlCb = document.getElementById('product-control-stock');
+    const controlaEstoque = controlCb ? controlCb.checked : true;
+    const quantidade = controlaEstoque ? (parseInt(document.getElementById('product-stock-qty').value, 10) || 0) : 0;
     let estoqueMinimo = parseInt(document.getElementById('product-min-stock-qty').value, 10);
     if (isNaN(estoqueMinimo)) estoqueMinimo = 5;
 
@@ -290,7 +350,8 @@ class StockModule {
       precoCusto,
       precoVenda,
       quantidade,
-      estoqueMinimo
+      estoqueMinimo,
+      controlaEstoque
     };
 
     try {
