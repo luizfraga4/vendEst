@@ -86,6 +86,7 @@ class DBManager {
       const store = tx.objectStore('produtos');
 
       const qty = parseInt(produto.quantidade || produto.estoque || produto.stockQty, 10);
+      const controlaEstoque = produto.controlaEstoque !== undefined ? Boolean(produto.controlaEstoque) : true;
       
       const dataToSave = {
         codigo: String(produto.codigo || produto.code || '').trim(),
@@ -95,6 +96,8 @@ class DBManager {
         precoVenda: parseFloat(produto.precoVenda || produto.sellPrice) || 0,
         quantidade: isNaN(qty) ? 0 : qty,
         estoque: isNaN(qty) ? 0 : qty,
+        estoqueMinimo: parseInt(produto.estoqueMinimo || produto.minEstoque || produto.minStock || 5, 10),
+        controlaEstoque: controlaEstoque,
         updatedAt: new Date().toISOString()
       };
 
@@ -120,7 +123,10 @@ class DBManager {
       const request = store.getAll();
 
       request.onsuccess = () => {
-        const produtos = request.result || [];
+        const produtos = (request.result || []).map(p => ({
+          ...p,
+          controlaEstoque: p.controlaEstoque !== undefined ? Boolean(p.controlaEstoque) : true
+        }));
         produtos.sort((a, b) => (a.nome || '').localeCompare(b.nome || ''));
         resolve(produtos);
       };
@@ -182,7 +188,13 @@ class DBManager {
       const index = store.index('codigo');
       const request = index.get(String(codigo).trim());
 
-      request.onsuccess = () => resolve(request.result);
+      request.onsuccess = () => {
+        const res = request.result;
+        if (res) {
+          res.controlaEstoque = res.controlaEstoque !== undefined ? Boolean(res.controlaEstoque) : true;
+        }
+        resolve(res);
+      };
       request.onerror = (e) => reject(e.target.error);
     });
   }
@@ -254,7 +266,7 @@ class DBManager {
       };
 
       // Baixa de estoque: processa cada item individualmente
-      // Se produto não encontrado, pula a baixa mas não cancela a venda
+      // Se produto não encontrado ou se controlaEstoque === false, pula a baixa
       dadosVenda.itens.forEach(item => {
         const getReq = productStore.get(Number(item.id));
         getReq.onsuccess = () => {
@@ -264,14 +276,19 @@ class DBManager {
             return; // Pula a baixa, a venda continua
           }
 
-          const qtdAtual = Number(produto.quantidade || produto.estoque || 0);
-          const qtdVendida = Number(item.quantidade || item.qty || 0);
+          const controlaEstoque = produto.controlaEstoque !== undefined ? Boolean(produto.controlaEstoque) : true;
+          if (controlaEstoque) {
+            const qtdAtual = Number(produto.quantidade || produto.estoque || 0);
+            const qtdVendida = Number(item.quantidade || item.qty || 0);
 
-          produto.quantidade = qtdAtual - qtdVendida;
-          produto.estoque = produto.quantidade;
-          produto.updatedAt = new Date().toISOString();
+            produto.quantidade = qtdAtual - qtdVendida;
+            produto.estoque = produto.quantidade;
+            produto.updatedAt = new Date().toISOString();
 
-          productStore.put(produto);
+            productStore.put(produto);
+          } else {
+            console.log(`[DB] Produto ID ${item.id} ("${produto.nome || item.name}") possui controlaEstoque=false — baixa de estoque ignorada.`);
+          }
         };
 
         getReq.onerror = (e) => {
@@ -682,6 +699,7 @@ class DBManager {
       if (!p.categoria && !p.category) {
         p.categoria = 'Geral';
       }
+      p.controlaEstoque = p.controlaEstoque !== undefined ? Boolean(p.controlaEstoque) : true;
       productStore.add(p);
     }
 

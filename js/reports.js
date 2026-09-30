@@ -261,6 +261,8 @@ class ReportsModule {
   async renderizarRelatorioProdutosUI() {
     const tbody = document.getElementById('report-products-table-body');
     const totalQtyEl = document.getElementById('report-product-total-qty');
+    const totalCostEl = document.getElementById('report-product-total-cost');
+    const totalProfitEl = document.getElementById('report-product-total-profit');
     const top1NameEl = document.getElementById('report-product-top1-name');
     const top1DetailsEl = document.getElementById('report-product-top1-details');
 
@@ -280,8 +282,12 @@ class ReportsModule {
       if (window.dbManager && typeof window.dbManager.listarProdutos === 'function') {
         catalog = await window.dbManager.listarProdutos();
       }
-      const catalogMap = new Map();
-      catalog.forEach(p => catalogMap.set(Number(p.id), p));
+      const catalogById = new Map();
+      const catalogByCode = new Map();
+      catalog.forEach(p => {
+        if (p.id) catalogById.set(Number(p.id), p);
+        if (p.codigo || p.code) catalogByCode.set(String(p.codigo || p.code).trim().toLowerCase(), p);
+      });
 
       const productMap = new Map();
 
@@ -293,7 +299,11 @@ class ReportsModule {
           const price = typeof item.price === 'number' ? item.price : parseFloat(item.price || item.precoVenda || 0);
           const total = typeof item.total === 'number' ? item.total : (qty * price);
 
-          const catItem = item.id ? catalogMap.get(Number(item.id)) : null;
+          let catItem = item.id ? catalogById.get(Number(item.id)) : null;
+          if (!catItem && (item.code || item.codigo)) {
+            catItem = catalogByCode.get(String(item.code || item.codigo).trim().toLowerCase());
+          }
+          const precoCustoUnitario = Number(catItem?.precoCusto || catItem?.costPrice || 0);
           const category = (catItem && (catItem.categoria || catItem.category))
             ? (catItem.categoria || catItem.category)
             : (item.categoria || item.category || 'Geral');
@@ -304,12 +314,16 @@ class ReportsModule {
             const entry = productMap.get(key);
             entry.qtdTotal += qty;
             entry.faturamentoTotal += total;
+            if (entry.precoCustoUnitario === 0 && precoCustoUnitario > 0) {
+              entry.precoCustoUnitario = precoCustoUnitario;
+            }
           } else {
             productMap.set(key, {
               key,
               code,
               name,
               category,
+              precoCustoUnitario,
               qtdTotal: qty,
               faturamentoTotal: total
             });
@@ -320,10 +334,17 @@ class ReportsModule {
       const itemsArr = Array.from(productMap.values());
       itemsArr.forEach(item => {
         item.precoMedioUnitario = item.qtdTotal > 0 ? (item.faturamentoTotal / item.qtdTotal) : 0;
+        item.custoTotal = item.qtdTotal * item.precoCustoUnitario;
+        item.lucroBruto = item.faturamentoTotal - item.custoTotal;
+        item.margemPercentual = item.faturamentoTotal > 0 ? ((item.lucroBruto / item.faturamentoTotal) * 100) : 0;
       });
 
       if (this.productSort === 'faturamento') {
         itemsArr.sort((a, b) => b.faturamentoTotal - a.faturamentoTotal);
+      } else if (this.productSort === 'lucro') {
+        itemsArr.sort((a, b) => b.lucroBruto - a.lucroBruto);
+      } else if (this.productSort === 'margem') {
+        itemsArr.sort((a, b) => b.margemPercentual - a.margemPercentual);
       } else {
         // 'qtd' (padrão decrescente por quantidade)
         itemsArr.sort((a, b) => b.qtdTotal - a.qtdTotal);
@@ -332,7 +353,13 @@ class ReportsModule {
       this.produtosAgrupados = itemsArr;
 
       const grandTotalQty = itemsArr.reduce((sum, i) => sum + i.qtdTotal, 0);
+      const grandTotalCost = itemsArr.reduce((sum, i) => sum + i.custoTotal, 0);
+      const grandTotalRevenue = itemsArr.reduce((sum, i) => sum + i.faturamentoTotal, 0);
+      const grandTotalProfit = grandTotalRevenue - grandTotalCost;
+
       if (totalQtyEl) totalQtyEl.textContent = grandTotalQty.toLocaleString('pt-BR');
+      if (totalCostEl) totalCostEl.textContent = grandTotalCost.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+      if (totalProfitEl) totalProfitEl.textContent = grandTotalProfit.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
       if (itemsArr.length > 0) {
         const top1 = [...itemsArr].sort((a, b) => b.qtdTotal - a.qtdTotal)[0];
@@ -346,7 +373,7 @@ class ReportsModule {
       if (itemsArr.length === 0) {
         tbody.innerHTML = `
           <tr>
-            <td colspan="6" class="px-6 py-8 text-center text-slate-400">
+            <td colspan="10" class="px-6 py-8 text-center text-slate-400">
               <i class="fa-solid fa-boxes-stacked text-4xl text-slate-500 mb-2 block"></i>
               <p class="font-medium text-slate-300">Nenhum produto vendido no período e horário selecionados.</p>
             </td>
@@ -355,20 +382,29 @@ class ReportsModule {
         return;
       }
 
-      tbody.innerHTML = itemsArr.map(item => `
-        <tr class="hover:bg-slate-800/50 transition-colors border-b border-slate-800/60 text-sm">
-          <td class="px-6 py-4 font-mono font-medium text-indigo-300">${item.code}</td>
-          <td class="px-6 py-4 font-semibold text-slate-100">${item.name}</td>
-          <td class="px-6 py-4">
-            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
-              ${item.category}
-            </span>
-          </td>
-          <td class="px-6 py-4 text-center font-bold text-slate-200">${item.qtdTotal} un</td>
-          <td class="px-6 py-4 text-right font-mono text-slate-300">R$ ${item.precoMedioUnitario.toFixed(2)}</td>
-          <td class="px-6 py-4 text-right font-bold text-emerald-400">R$ ${item.faturamentoTotal.toFixed(2)}</td>
-        </tr>
-      `).join('');
+      tbody.innerHTML = itemsArr.map(item => {
+        const lucroColorClass = item.lucroBruto >= 0 ? 'text-emerald-400 font-bold' : 'text-rose-400 font-bold';
+        const margemColorClass = item.margemPercentual >= 0 ? 'text-emerald-400 font-semibold' : 'text-rose-400 font-semibold';
+
+        return `
+          <tr class="hover:bg-slate-800/50 transition-colors border-b border-slate-800/60 text-sm">
+            <td class="px-4 py-3 font-mono font-medium text-indigo-300">${item.code}</td>
+            <td class="px-4 py-3 font-semibold text-slate-100">${item.name}</td>
+            <td class="px-4 py-3">
+              <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                ${item.category}
+              </span>
+            </td>
+            <td class="px-4 py-3 text-center font-bold text-slate-200">${item.qtdTotal} un</td>
+            <td class="px-4 py-3 text-right font-mono text-slate-400">R$ ${item.precoCustoUnitario.toFixed(2)}</td>
+            <td class="px-4 py-3 text-right font-mono text-slate-300">R$ ${item.precoMedioUnitario.toFixed(2)}</td>
+            <td class="px-4 py-3 text-right font-mono text-rose-300/80">R$ ${item.custoTotal.toFixed(2)}</td>
+            <td class="px-4 py-3 text-right font-bold text-indigo-300">R$ ${item.faturamentoTotal.toFixed(2)}</td>
+            <td class="px-4 py-3 text-right ${lucroColorClass}">R$ ${item.lucroBruto.toFixed(2)}</td>
+            <td class="px-4 py-3 text-right ${margemColorClass}">${item.margemPercentual.toFixed(1)}%</td>
+          </tr>
+        `;
+      }).join('');
 
     } catch (err) {
       console.error('Erro ao renderizar relatório de produtos:', err);
@@ -381,15 +417,30 @@ class ReportsModule {
       return;
     }
 
-    const headers = ['Código (SKU)', 'Nome do Produto', 'Categoria', 'Quantidade Vendida', 'Preço Médio Unitário (R$)', 'Faturamento Bruto (R$)'];
+    const headers = [
+      'Código (SKU)',
+      'Nome do Produto',
+      'Categoria',
+      'Quantidade Vendida',
+      'Preço Custo Unitário (R$)',
+      'Preço Médio Venda Unitário (R$)',
+      'Custo Total (R$)',
+      'Faturamento Bruto (R$)',
+      'Lucro Bruto (R$)',
+      'Margem (%)'
+    ];
     
     const rows = this.produtosAgrupados.map(p => [
       `"${String(p.code || '').replace(/"/g, '""')}"`,
       `"${String(p.name || '').replace(/"/g, '""')}"`,
       `"${String(p.category || '').replace(/"/g, '""')}"`,
       p.qtdTotal,
+      p.precoCustoUnitario.toFixed(2).replace('.', ','),
       p.precoMedioUnitario.toFixed(2).replace('.', ','),
-      p.faturamentoTotal.toFixed(2).replace('.', ',')
+      p.custoTotal.toFixed(2).replace('.', ','),
+      p.faturamentoTotal.toFixed(2).replace('.', ','),
+      p.lucroBruto.toFixed(2).replace('.', ','),
+      `${p.margemPercentual.toFixed(1).replace('.', ',')}%`
     ]);
 
     const csvContent = '\uFEFF' + [headers.join(';'), ...rows.map(e => e.join(';'))].join('\n');

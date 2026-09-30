@@ -506,25 +506,43 @@
         </div>
       </div>
 
-      <!-- SEÇÃO 1.5: Vendas por Produto (Curva de Saída) -->
+      <!-- SEÇÃO 1.5: Vendas por Produto (Curva de Saída e Margem de Lucro) -->
       <div id="subtab-products-container" class="hidden space-y-4">
         <!-- Cards de KPIs do Relatório de Produtos -->
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <div class="bg-slate-800/80 rounded-2xl p-5 border border-slate-700/60 shadow-lg">
             <div class="flex justify-between items-center mb-1">
-              <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Total de Itens Vendidos no Período</span>
+              <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Total de Itens Vendidos</span>
               <i class="fa-solid fa-boxes-stacked text-indigo-400 text-lg"></i>
             </div>
-            <p id="report-product-total-qty" class="text-3xl font-black text-slate-100">0</p>
-            <p class="text-xs text-slate-400 mt-1">Soma da quantidade de todos os itens vendidos no intervalo</p>
+            <p id="report-product-total-qty" class="text-2xl font-black text-slate-100">0</p>
+            <p class="text-xs text-slate-400 mt-1">Soma de itens vendidos no período</p>
           </div>
 
           <div class="bg-slate-800/80 rounded-2xl p-5 border border-slate-700/60 shadow-lg">
             <div class="flex justify-between items-center mb-1">
-              <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Produto Campeão de Vendas (Top 1)</span>
+              <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Custo Total (CMV)</span>
+              <i class="fa-solid fa-file-invoice-dollar text-rose-400 text-lg"></i>
+            </div>
+            <p id="report-product-total-cost" class="text-2xl font-black text-rose-400">R$ 0,00</p>
+            <p class="text-xs text-slate-400 mt-1">Custo total das mercadorias vendidas</p>
+          </div>
+
+          <div class="bg-slate-800/80 rounded-2xl p-5 border border-slate-700/60 shadow-lg">
+            <div class="flex justify-between items-center mb-1">
+              <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Lucro Bruto Geral</span>
+              <i class="fa-solid fa-hand-holding-dollar text-emerald-400 text-lg"></i>
+            </div>
+            <p id="report-product-total-profit" class="text-2xl font-black text-emerald-400">R$ 0,00</p>
+            <p class="text-xs text-slate-400 mt-1">Faturamento Bruto menos Custo Total</p>
+          </div>
+
+          <div class="bg-slate-800/80 rounded-2xl p-5 border border-slate-700/60 shadow-lg">
+            <div class="flex justify-between items-center mb-1">
+              <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Produto Campeão (Top 1)</span>
               <i class="fa-solid fa-trophy text-amber-400 text-lg"></i>
             </div>
-            <p id="report-product-top1-name" class="text-xl font-bold text-amber-400 truncate">Nenhum no período</p>
+            <p id="report-product-top1-name" class="text-lg font-bold text-amber-400 truncate">Nenhum no período</p>
             <p id="report-product-top1-details" class="text-xs text-slate-400 mt-1">0 un. vendidas | R$ 0,00</p>
           </div>
         </div>
@@ -551,6 +569,8 @@
               <select id="report-product-sort-select" onchange="reportsModule.setProductSort(this.value)" class="bg-slate-900 border border-slate-700 text-slate-200 text-xs font-semibold rounded-xl px-3 py-1.5 focus:outline-none focus:border-indigo-500 cursor-pointer">
                 <option value="qtd">Mais Vendidos (Qtd)</option>
                 <option value="faturamento">Maior Faturamento (R$)</option>
+                <option value="lucro">Maior Lucro Bruto (R$)</option>
+                <option value="margem">Maior Margem (%)</option>
               </select>
             </div>
 
@@ -566,12 +586,16 @@
             <table class="w-full text-left border-collapse">
               <thead>
                 <tr class="bg-slate-950/60 text-slate-400 text-xs font-semibold uppercase tracking-wider border-b border-slate-700/60">
-                  <th class="px-6 py-4">Cód. SKU</th>
-                  <th class="px-6 py-4">Nome do Produto</th>
-                  <th class="px-6 py-4">Categoria</th>
-                  <th class="px-6 py-4 text-center">Qtd Total Vendida</th>
-                  <th class="px-6 py-4 text-right">Valor Médio Unitário</th>
-                  <th class="px-6 py-4 text-right">Faturamento Bruto</th>
+                  <th class="px-4 py-3.5">Cód. SKU</th>
+                  <th class="px-4 py-3.5">Nome do Produto</th>
+                  <th class="px-4 py-3.5">Categoria</th>
+                  <th class="px-4 py-3.5 text-center">Qtd Vendida</th>
+                  <th class="px-4 py-3.5 text-right">Preço Custo Unit.</th>
+                  <th class="px-4 py-3.5 text-right">Preço Médio Venda</th>
+                  <th class="px-4 py-3.5 text-right">Custo Total</th>
+                  <th class="px-4 py-3.5 text-right">Faturamento Bruto</th>
+                  <th class="px-4 py-3.5 text-right">Lucro Bruto</th>
+                  <th class="px-4 py-3.5 text-right">Margem (%)</th>
                 </tr>
               </thead>
               <tbody id="report-products-table-body" class="divide-y divide-slate-800">
@@ -1018,6 +1042,13 @@
           </select>
         </div>
 
+        <div class="flex items-center space-x-2 pt-1 pb-1">
+          <input type="checkbox" id="product-control-stock" checked onchange="stockModule.toggleStockControlFields(this.checked)" class="w-4 h-4 text-indigo-600 bg-slate-950 border-slate-700 rounded focus:ring-indigo-500 focus:ring-2 accent-indigo-600 cursor-pointer">
+          <label for="product-control-stock" class="text-xs font-semibold text-slate-200 cursor-pointer select-none">
+            Controlar Estoque deste produto
+          </label>
+        </div>
+
         <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <div>
             <label class="block text-xs font-semibold text-slate-400 mb-1">Preço Custo (R$)</label>
@@ -1030,13 +1061,13 @@
           </div>
 
           <div>
-            <label class="block text-xs font-semibold text-slate-400 mb-1">Qtd Estoque *</label>
-            <input type="number" min="0" id="product-stock-qty" required placeholder="0" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-sm font-semibold text-slate-100 focus:outline-none focus:border-indigo-500">
+            <label class="block text-xs font-semibold text-slate-400 mb-1">Qtd Estoque <span id="lbl-stock-qty-required">*</span></label>
+            <input type="number" min="0" id="product-stock-qty" required placeholder="0" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-sm font-semibold text-slate-100 focus:outline-none focus:border-indigo-500 transition-all">
           </div>
 
           <div>
-            <label class="block text-xs font-semibold text-slate-400 mb-1">Estoque Mín. *</label>
-            <input type="number" min="0" id="product-min-stock-qty" placeholder="5" value="5" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-sm font-semibold text-slate-100 focus:outline-none focus:border-indigo-500">
+            <label class="block text-xs font-semibold text-slate-400 mb-1">Estoque Mín.</label>
+            <input type="number" min="0" id="product-min-stock-qty" placeholder="5" value="5" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-sm font-semibold text-slate-100 focus:outline-none focus:border-indigo-500 transition-all">
           </div>
         </div>
 

@@ -271,9 +271,8 @@ class ComandasModule {
           <p class="font-semibold text-sm text-slate-100">${p.nome || p.name || ''}</p>
           <p class="text-xs text-slate-400 font-mono">Estoque: ${p.quantidade || p.estoque || 0} un</p>
         </div>
-        <span class="font-bold text-emerald-400 text-sm">R$ ${parseFloat(p.precoVenda || 0).toFixed(2)}</span>
-      </div>
-    `).join('');
+      `;
+    }).join('');
 
     resultsContainer.classList.remove('hidden');
   }
@@ -430,7 +429,8 @@ class ComandasModule {
       // Transfer items to PDV cart preserving negotiated unit price
       this.currentComanda.itens.forEach(item => {
         const prod = this.catalog.find(p => p.id === item.id);
-        const maxStock = prod ? parseInt(prod.quantidade || prod.estoque || 0, 10) : 9999;
+        const controla = prod ? (prod.controlaEstoque !== undefined ? Boolean(prod.controlaEstoque) : true) : true;
+        const maxStock = (prod && controla) ? parseInt(prod.quantidade || prod.estoque || 0, 10) : Infinity;
         const itemPrice = typeof item.price === 'number' ? item.price : parseFloat(item.price || 0);
 
         const existingIndex = window.pdvModule.cart.findIndex(i => i.id === item.id);
@@ -446,7 +446,8 @@ class ComandasModule {
             price: itemPrice, // Preserva preço unitário negociado
             qty: item.qty,
             total: item.qty * itemPrice,
-            maxStock: maxStock
+            maxStock: maxStock,
+            controlaEstoque: controla
           });
         }
       });
