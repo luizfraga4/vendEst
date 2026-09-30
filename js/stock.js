@@ -346,6 +346,7 @@ class StockModule {
     const quantidade  = parseInt(document.getElementById('product-stock-qty').value, 10) || 0;
     let estoqueMinimo = parseInt(document.getElementById('product-min-stock-qty').value, 10);
     if (isNaN(estoqueMinimo)) estoqueMinimo = 5;
+    const controlaEstoque = document.getElementById('product-control-stock')?.checked ?? true;
 
     if (!nome) {
       showToast('Preencha pelo menos o Nome do produto.', 'warning');
