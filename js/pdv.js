@@ -344,8 +344,8 @@ class PDVModule {
           <p class="font-semibold text-sm text-slate-100">${p.nome || p.name || ''}</p>
           <p class="text-xs text-slate-400 font-mono">SKU: ${p.codigo || p.code || ''} | Estoque: ${p.quantidade || p.estoque || 0} un</p>
         </div>
-      `;
-    }).join('');
+      </div>
+    `).join('');
 
     resultsContainer.classList.remove('hidden');
   }
