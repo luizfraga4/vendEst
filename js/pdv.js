@@ -279,6 +279,14 @@ class PDVModule {
         this.renderCart();
       });
     }
+
+    document.addEventListener('click', (e) => {
+      const container = document.getElementById('pdv-search-results');
+      const input = document.getElementById('pdv-barcode-input');
+      if (container && input && !container.contains(e.target) && !input.contains(e.target)) {
+        this.hideSearchResults();
+      }
+    });
   }
 
   async handleBarcodeScan(query) {
@@ -322,24 +330,19 @@ class PDVModule {
     const filtered = this.catalog.filter(p =>
       String(p.nome || p.name || '').toLowerCase().includes(q) ||
       String(p.codigo || p.code || '').toLowerCase().includes(q)
-    ).slice(0, 6);
+    );
 
     if (filtered.length === 0) {
-      resultsContainer.innerHTML = `<div class="p-3 text-xs text-slate-400 text-center">Nenhum produto encontrado</div>`;
+      resultsContainer.innerHTML = `<div class="p-3 min-h-[44px] flex items-center justify-center text-xs text-slate-400 text-center">Nenhum produto encontrado</div>`;
       resultsContainer.classList.remove('hidden');
       return;
     }
 
-    resultsContainer.innerHTML = filtered.map(p => {
-      const controla = p.controlaEstoque !== undefined ? Boolean(p.controlaEstoque) : true;
-      const stockText = controla ? `Estoque: ${p.quantidade || p.estoque || 0} un` : `Estoque: Sem Controle`;
-      return `
-        <div onclick="pdvModule.selectSearchResult(${p.id})" class="flex items-center justify-between p-3 hover:bg-slate-700/90 cursor-pointer border-b border-slate-700/50 last:border-0 transition-colors">
-          <div>
-            <p class="font-semibold text-sm text-slate-100">${p.nome || p.name || ''}</p>
-            <p class="text-xs text-slate-400 font-mono">SKU: ${p.codigo || p.code || ''} | ${stockText}</p>
-          </div>
-          <span class="font-bold text-emerald-400 text-sm">R$ ${parseFloat(p.precoVenda || 0).toFixed(2)}</span>
+    resultsContainer.innerHTML = filtered.map(p => `
+      <div onclick="pdvModule.selectSearchResult(${p.id})" class="flex items-center justify-between p-3 min-h-[44px] hover:bg-slate-700/90 cursor-pointer border-b border-slate-700/50 last:border-0 transition-colors">
+        <div>
+          <p class="font-semibold text-sm text-slate-100">${p.nome || p.name || ''}</p>
+          <p class="text-xs text-slate-400 font-mono">SKU: ${p.codigo || p.code || ''} | Estoque: ${p.quantidade || p.estoque || 0} un</p>
         </div>
       `;
     }).join('');

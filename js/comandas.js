@@ -14,6 +14,17 @@ class ComandasModule {
   async init() {
     await this.loadComandas();
     await this.loadCatalog();
+    this.bindEvents();
+  }
+
+  bindEvents() {
+    document.addEventListener('click', (e) => {
+      const container = document.getElementById('comanda-search-results');
+      const input = document.getElementById('comanda-barcode-input');
+      if (container && input && !container.contains(e.target) && !input.contains(e.target)) {
+        this.hideSearchResults();
+      }
+    });
   }
 
   async loadCatalog() {
@@ -246,24 +257,19 @@ class ComandasModule {
     const q = trimmed.toLowerCase();
     const filtered = this.catalog.filter(p => {
       return (p.nome || p.name || '').toLowerCase().includes(q) || String(p.codigo || p.code || '').toLowerCase().includes(q);
-    }).slice(0, 8);
+    });
 
     if (filtered.length === 0) {
-      resultsContainer.innerHTML = `<div class="p-3 text-center text-xs text-slate-400 font-medium">Nenhum produto encontrado.</div>`;
+      resultsContainer.innerHTML = `<div class="p-3 min-h-[44px] flex items-center justify-center text-center text-xs text-slate-400 font-medium">Nenhum produto encontrado.</div>`;
       resultsContainer.classList.remove('hidden');
       return;
     }
 
-    resultsContainer.innerHTML = filtered.map(p => {
-      const controla = p.controlaEstoque !== undefined ? Boolean(p.controlaEstoque) : true;
-      const stockText = controla ? `Estoque: ${p.quantidade || p.estoque || 0} un` : `Estoque: Sem Controle`;
-      return `
-        <div onclick="comandasModule.selectSearchResult(${p.id})" class="flex items-center justify-between p-3 hover:bg-slate-700/90 cursor-pointer border-b border-slate-700/50 last:border-0 transition-colors">
-          <div>
-            <p class="font-semibold text-sm text-slate-100">${p.nome || p.name || ''}</p>
-            <p class="text-xs text-slate-400 font-mono">${stockText}</p>
-          </div>
-          <span class="font-bold text-emerald-400 text-sm">R$ ${parseFloat(p.precoVenda || 0).toFixed(2)}</span>
+    resultsContainer.innerHTML = filtered.map(p => `
+      <div onclick="comandasModule.selectSearchResult(${p.id})" class="flex items-center justify-between p-3 min-h-[44px] hover:bg-slate-700/90 cursor-pointer border-b border-slate-700/50 last:border-0 transition-colors">
+        <div>
+          <p class="font-semibold text-sm text-slate-100">${p.nome || p.name || ''}</p>
+          <p class="text-xs text-slate-400 font-mono">Estoque: ${p.quantidade || p.estoque || 0} un</p>
         </div>
       `;
     }).join('');
